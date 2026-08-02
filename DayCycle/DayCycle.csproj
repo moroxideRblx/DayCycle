@@ -1,0 +1,104 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- BepInEx Properties -->
+    <PropertyGroup>
+		<Title>Day Cycle</Title>
+		<PluginId>noosh.daycycle</PluginId>
+        <AssemblyName>DayCycle</AssemblyName>
+		<Product>$(AssemblyName)</Product>
+		<Authors>Noosh</Authors>
+        <!-- Change to whatever version you're currently on. -->
+        <Version>1.0.0</Version>
+    </PropertyGroup>
+
+    <!-- Project Properties -->
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <RootNamespace>DayCycle</RootNamespace>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <LangVersion>latest</LangVersion>
+    </PropertyGroup>
+
+    <!-- Enable Nullable for better IDE null-checking -->
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <!-- Set NuGet Sources -->
+    <PropertyGroup>
+        <RestoreAdditionalProjectSources>
+            https://api.nuget.org/v3/index.json;
+            https://nuget.bepinex.dev/v3/index.json
+        </RestoreAdditionalProjectSources>
+    </PropertyGroup>
+
+    <!-- Disable Publicizer Warnings -->
+    <PropertyGroup>
+        <NoWarn>$(NoWarn);CS0436</NoWarn>
+    </PropertyGroup>
+
+    <!-- Embed Debug Symbols for Easier Debugging -->
+    <PropertyGroup>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <!--
+        Trim the project path to prevent players from potentially
+        viewing Private Information in stack traces.
+        -->
+        <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))=./</PathMap>
+    </PropertyGroup>
+
+    <!-- Primary Package References - BepInEx -->
+    <ItemGroup>
+        <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.1" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.Core" Version="5.*" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
+    </ItemGroup>
+
+    <!-- Package References - Game Assembly HookGen -->
+	<ItemGroup>
+		<Reference Include="$(MMHOOKDirectory)MMHOOK_Assembly-CSharp.dll" PrivateAssets="all" />
+		<Reference Include="$(MAN)/*.dll" Exclude="$(MAN)/Mono.Security.dll;$(MAN)/mscorlib.dll;$(MAN)/netstandard.dll;$(MAN)/System*.dll" Publicize="true" PrivateAssets="all" />
+	</ItemGroup>
+
+    <!-- Netcode Patcher Post-Build Event -->
+    <Target Name="NetcodePatch" AfterTargets="PostBuildEvent">
+        <Exec Command="netcode-patch &quot;$(TargetPath)&quot; @(ReferencePathWithRefAssemblies->'&quot;%(Identity)&quot;', ' ')" />
+    </Target>
+
+	<!-- Custom Variables -->
+	<PropertyGroup>
+		<BundleName>daycycle</BundleName>
+		<R2MM_PROFILE>dev</R2MM_PROFILE>
+		<UNITY>C:/LCModding/v56/Assets</UNITY>
+		<LETHAL_COMPANY_DIR>C:/Program Files (x86)/Steam/steamapps/common/Lethal Company</LETHAL_COMPANY_DIR>
+		<MODNAME>$(Authors)-$(AssemblyName)</MODNAME>
+		<R2MM_PATH>$(APPDATA)/r2modmanPlus-local/LethalCompany</R2MM_PATH>
+		<MAN>$(LETHAL_COMPANY_DIR)/Lethal Company_Data/Managed</MAN>
+		<MMHOOKDirectory>$(R2MM_PATH)/profiles/$(R2MM_PROFILE)/BepInEx/plugins/MMHOOK/</MMHOOKDirectory>
+	</PropertyGroup>
+
+	<!-- Copy to Folders Post-Build Event -->
+	<Target Name="CopyToPublish" AfterTargets="NetcodePatch" Condition="true">
+		<MakeDir Directories="$(TargetDir)publish" Condition="!Exists('$(TargetDir)publish')" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(TargetDir)publish/" />
+		<Copy SourceFiles="$(SolutionDir)CHANGELOG.md" DestinationFolder="$(TargetDir)publish/" />
+		<Copy SourceFiles="$(SolutionDir)README.md" DestinationFolder="$(TargetDir)publish/" />
+		<Copy SourceFiles="$(SolutionDir)manifest.json" DestinationFolder="$(TargetDir)publish/" />
+		<Copy SourceFiles="$(SolutionDir)icon.png" DestinationFolder="$(TargetDir)publish/" />
+		<Copy SourceFiles="$(UNITY)/AssetBundleBrowser/$(BundleName)" DestinationFolder="$(TargetDir)publish/" />
+	</Target>
+
+	<Target Name="SendToBepInEx" AfterTargets="CopyToPublish" Condition="true">
+		<ItemGroup>
+			<PluginFiles Include="$(TargetDir)publish/**/*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(UNITY)/LethalCompany/Mods/plugins/$(MODNAME)/" />
+		<Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(R2MM_PATH)/profiles/$(R2MM_PROFILE)/BepInEx/plugins/$(MODNAME)/" />
+	</Target>
+</Project>

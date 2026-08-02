@@ -1,0 +1,80 @@
+global using LLV = BepInEx.Logging.LogLevel;
+using BepInEx;
+using BepInEx.Configuration;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using UnityEngine;
+
+namespace DayCycle
+{
+    [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
+	public class P : BaseUnityPlugin
+	{
+		internal static P Instance;
+		public static ConfigFile config;
+		internal static AssetBundle assets;
+
+		private void Awake()
+		{
+			Instance = this;
+			config = ModConfig.Load();
+			assets = AssetBundle.LoadFromFile(Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "daycycle"));
+
+			API.sunAnimators["SunAnimContainer"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/SunAnimContainer_24.controller");
+			API.sunAnimators["SunAnimContainer 1"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/SunAnimContainer 1_24.controller");
+			API.sunAnimators["BlizzardSunAnimContainer"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/BlizzardSunAnimContainer_24.controller");
+
+			NetcodePatcher();
+			DayCycle.Patch();
+
+			Logger.LogInfo($"{MyPluginInfo.PLUGIN_GUID} [{MyPluginInfo.PLUGIN_VERSION}] loaded");
+		}
+
+		private void NetcodePatcher()
+		{
+			var types = Assembly.GetExecutingAssembly().GetTypes();
+			foreach (var type in types)
+			{
+				var methods = type.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+				foreach (var method in methods)
+				{
+					var attributes = method.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false);
+					if (attributes.Length > 0)
+					{
+						method.Invoke(null, null);
+					}
+				}
+			}
+		}
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public static string Loc([CallerMemberName] string name = "", [CallerLineNumber] int ln = 0)
+		{
+			return $"[{name}, ln: {ln}]";
+		}
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public static void Log(object data, LLV lvl = LLV.Message)
+		{
+			Instance.Logger.Log(lvl, data);
+		}
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public static void Fail(object data, LLV lvl = LLV.Error)
+		{
+			Instance.Logger.Log(lvl, P.Loc() + " " + data);
+		}
+	}
+
+	public static class ModConfig
+	{
+		public static ConfigEntry<float> intervalSetting;
+		public static ConfigFile Load()
+		{
+			intervalSetting = P.Instance.Config.Bind("Other", "Clock Update Interval", 3f, "Interval at which the time on the HUD clock updates");
+			return P.Instance.Config;
+		}
+	}
+}
