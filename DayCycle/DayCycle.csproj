@@ -92,7 +92,7 @@
 		<Copy SourceFiles="$(MSBuildThisFileDirectory)../README.md" DestinationFolder="$(TargetDir)publish/" />
 		<Copy SourceFiles="$(MSBuildThisFileDirectory)../manifest.json" DestinationFolder="$(TargetDir)publish/" />
 		<Copy SourceFiles="$(MSBuildThisFileDirectory)../icon.png" DestinationFolder="$(TargetDir)publish/" />
-		<Warning Text="Asset bundle not found at $(BundlePath); the suns keep their 18-hour animations. Set BundlePath in DayCycle.Local.props to a built bundle." Condition="!Exists('$(BundlePath)')" />
+		<Warning Text="Asset bundle not found at $(BundlePath); the suns keep their 18-hour animations. Build it from UnityProject or set BundlePath in DayCycle.Local.props." Condition="!Exists('$(BundlePath)')" />
 		<Copy SourceFiles="$(BundlePath)" DestinationFolder="$(TargetDir)publish/" Condition="Exists('$(BundlePath)')" />
 	</Target>
 

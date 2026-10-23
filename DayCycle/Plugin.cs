@@ -32,6 +32,7 @@ namespace DayCycle
 			}
 
 			DayCycle.Patch();
+			FallbackSun.Patch();
 
 			Logger.LogInfo($"{MyPluginInfo.PLUGIN_GUID} [{MyPluginInfo.PLUGIN_VERSION}] loaded");
 		}

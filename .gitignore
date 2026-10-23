@@ -366,3 +366,19 @@ MigrationBackup/
 FodyWeavers.xsd
 # Local machine paths
 DayCycle.Local.props
+
+# Unity project (generated / build output)
+UnityProject/[Ll]ibrary/
+UnityProject/[Tt]emp/
+UnityProject/[Ll]ogs/
+UnityProject/[Oo]bj/
+UnityProject/[Uu]serSettings/
+UnityProject/*.csproj
+UnityProject/*.sln
+# the built sun bundle is kept so the mod builds without Unity
+UnityProject/AssetBundles/*
+!UnityProject/AssetBundles/daycycle
+# ...but keep Unity's .meta files (asset GUIDs) and package manifest, which the VS rules above ignore
+!UnityProject/**/*.meta
+!UnityProject/Packages/manifest.json
+!UnityProject/Packages/packages-lock.json

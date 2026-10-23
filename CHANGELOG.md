@@ -7,5 +7,7 @@
 - The threat level matches vanilla's clock times again.
 - New saves start with a full deadline, and the deadline doesn't refill on long stays.
 - A leave-early vote makes the ship leave 1.8 hours later, like vanilla.
+- Rebuilt the 24-hour sun bundle for all three sun types (normal, stormy, eclipse).
+- Modded moons keep their own sun and fade into the morning from 3 to 6 AM.
 
 # 1.0.0

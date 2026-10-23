@@ -9,6 +9,8 @@ Updated for Lethal Company v81.
 
 - Days are 24 hours long and keep looping. Stay as long as you want: night, dawn, then a new day.
 - The ship leaves when you pull the lever, when everyone dies, or 1.8 hours after a leave-early vote.
+- Every vanilla moon gets a proper 24-hour sun with sunsets, dark nights and sunrises, in normal, stormy and eclipse versions.
+- Modded moons keep their own sun and fade into the morning between 3 and 6 AM.
 - Spawns follow the day: busier towards midnight, calmer towards dawn, every day you stay.
 - Each moon visit costs one deadline day however long you stay.
 

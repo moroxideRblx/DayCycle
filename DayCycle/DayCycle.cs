@@ -11,6 +11,7 @@ namespace DayCycle
 	public static class DayCycle
 	{
 		public static Animator sunAnim;
+		internal static Animator? fallbackSun; // this landing's sun when it has no 24h version
 
 		// the game's own day length, read before it's set to 24
 		internal static int VanillaHours = 18;
@@ -81,17 +82,23 @@ namespace DayCycle
 		private static void AnimatedSun_Start(On.animatedSun.orig_Start orig, animatedSun self)
 		{
 			sunAnim = self.gameObject.GetComponent<Animator>();
+			fallbackSun = null;
 			string sunAnimName = sunAnim.runtimeAnimatorController.name;
+			SelectableLevel? level = StartOfRound.Instance != null ? StartOfRound.Instance.currentLevel : null;
 
 			if (API.sunAnimators.TryGetValue(sunAnimName, out RuntimeAnimatorController newAnimator))
 			{
-				self.gameObject.GetComponent<Animator>().runtimeAnimatorController = newAnimator;
-				P.Log($"Replaced SunAnimContainer animator \"{sunAnimName}\" with 24 hour version \"{newAnimator.name}\".");
+				sunAnim.runtimeAnimatorController = newAnimator;
+				P.Log($"Sun: replaced {sunAnimName} with 24h version");
+			}
+			else if (level != null && !level.planetHasTime)
+			{
+				P.Log($"Sun: {sunAnimName} unchanged (no clock)");
 			}
 			else
 			{
-				P.Log($"Could not find replacement for SunAnimContainer animator \"{sunAnimName}\".");
-				// TODO: Add fallback behavior
+				fallbackSun = sunAnim;
+				P.Log($"Sun: fallback for {sunAnimName}");
 			}
 
 			orig(self);
@@ -159,7 +166,7 @@ namespace DayCycle
 				//IL_00b1: call float32 [UnityEngine.CoreModule]UnityEngine.Mathf::Clamp(float32, float32, float32)
 				c.Emit(OpCodes.Pop);
 				c.Emit(OpCodes.Ldarg_0);
-				c.EmitDelegate<Func<TimeOfDay, float>>((self) => { return self.normalizedTimeOfDay % 1f; });
+				c.EmitDelegate<Func<TimeOfDay, float>>(SunTime);
 				//IL_00b6: callvirt instance void [UnityEngine.AnimationModule]UnityEngine.Animator::SetFloat(string, float32)
 			}
 			else { P.Fail("can't patch sunAnimator.."); }
@@ -172,6 +179,15 @@ namespace DayCycle
 
 			} else { P.Fail("cant patch interval..."); }
 		}
+		// fallback suns use vanilla's 6 AM - midnight range (capped at 0.99 like vanilla) and hold the night pose after
+		private static float SunTime(TimeOfDay tod)
+		{
+			float normalized = ((tod.normalizedTimeOfDay % 1f) + 1f) % 1f;
+			if (fallbackSun == null || tod.sunAnimator != fallbackSun) { return normalized; }
+			float hoursSince6AM = normalized * 24f;
+			return Mathf.Min(hoursSince6AM / 18f, 0.99f);
+		}
+
 		private static void TimeOfDay_TimeOfDayEvents(ILContext il)
 		{
 			ILCursor c = new ILCursor(il);
