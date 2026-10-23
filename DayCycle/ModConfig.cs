@@ -22,8 +22,10 @@ namespace DayCycle
 		public const string EnemyCycleSection = "2. Enemy Cycle";
 		public const string EnemyCycleDaytimeSection = "2.1 Enemy Cycle (Daytime)";
 		public const string EnemyCycleOutsideSection = "2.2 Enemy Cycle (Outside)";
+		public const string EnemyCycleInsideSection = "2.3 Enemy Cycle (Inside)";
 		private const string CycleHoursGroup = EnemyCycleSection + " > Enemy cycle hours";
 		private const string OutsidePercentGroup = EnemyCycleSection + " > Outside enemy despawn percent";
+		private const string IndoorPercentGroup = EnemyCycleSection + " > Indoor enemy despawn percent";
 
 		public static ConfigEntry<string> moonBlacklist;
 		public static ConfigEntry<bool> debugLogging;
@@ -31,7 +33,9 @@ namespace DayCycle
 		public static ConfigEntry<float> dawnStartHour;
 		public static ConfigEntry<float> dawnEndHour;
 		public static ConfigEntry<bool> daytimeCycleEnabled;
+		public static ConfigEntry<bool> indoorDawnFade;
 		public static ConfigEntry<int> outsideDespawnPercent;
+		public static ConfigEntry<int> indoorDawnShare;
 		private static readonly Dictionary<string, ConfigEntry<EnemyCycleRule>> enemyRules = new Dictionary<string, ConfigEntry<EnemyCycleRule>>();
 
 		public static ConfigEntry<float> floodRiseHour;
@@ -60,10 +64,15 @@ namespace DayCycle
 				"Outside night enemies leave in the morning and return at night.");
 			daytimeCycleEnabled = Bind(cfg, EnemyCycleSection, "Enable daytime enemy cycle", false,
 				"Daytime enemies return each morning after leaving at nightfall.");
+			indoorDawnFade = Bind(cfg, EnemyCycleSection, "Enable indoor enemy cycle", false,
+				"Some indoor enemies leave during the enemy cycle hours.");
 			// each percent only exists while its group is on, the hours while any group is
 			BindSetting(cfg, EnemyCycleSection, "Outside enemy despawn percent", 100, e => outsideDespawnPercent = e,
 				"Percentage of outside enemies that leave each cycle.",
 				new AcceptableValueRange<int>(0, 100), group: OutsidePercentGroup);
+			BindSetting(cfg, EnemyCycleSection, "Indoor enemy despawn percent", 50, e => indoorDawnShare = e,
+				"Percentage of indoor enemies that leave each cycle.",
+				new AcceptableValueRange<int>(0, 100), group: IndoorPercentGroup);
 			BindSetting(cfg, EnemyCycleSection, "Enemy cycle start hour", 4f, e => dawnStartHour = e,
 				"Hour enemies start leaving (4.5 = 4:30 AM).",
 				new AcceptableValueRange<float>(0f, 24f), group: CycleHoursGroup);
@@ -180,10 +189,12 @@ namespace DayCycle
 		{
 			itemSections.Add(new ItemSection { Name = EnemyCycleDaytimeSection, Applies = () => daytimeCycleEnabled.Value, OffReason = () => $"{daytimeCycleEnabled.Definition.Key} off", Rebuild = EnemyCycleRules.RegisterAll, ClearCache = () => ClearEnemyRules(EnemyCycleDaytimeSection) });
 			itemSections.Add(new ItemSection { Name = EnemyCycleOutsideSection, Applies = () => dawnFadeEnabled.Value, OffReason = () => $"{dawnFadeEnabled.Definition.Key} off", Rebuild = EnemyCycleRules.RegisterAll, ClearCache = () => ClearEnemyRules(EnemyCycleOutsideSection) });
+			itemSections.Add(new ItemSection { Name = EnemyCycleInsideSection, Applies = () => indoorDawnFade.Value, OffReason = () => $"{indoorDawnFade.Definition.Key} off", Rebuild = EnemyCycleRules.RegisterAll, ClearCache = () => ClearEnemyRules(EnemyCycleInsideSection) });
 			itemSections.Add(new ItemSection { Name = OutsidePercentGroup, InSection = EnemyCycleSection, Applies = () => dawnFadeEnabled.Value, OffReason = () => $"{dawnFadeEnabled.Definition.Key} off", Settings = sectionSettings[OutsidePercentGroup] });
-			itemSections.Add(new ItemSection { Name = CycleHoursGroup, InSection = EnemyCycleSection, Applies = () => dawnFadeEnabled.Value || daytimeCycleEnabled.Value, OffReason = () => "all enemy cycles off", Settings = sectionSettings[CycleHoursGroup] });
+			itemSections.Add(new ItemSection { Name = CycleHoursGroup, InSection = EnemyCycleSection, Applies = () => dawnFadeEnabled.Value || daytimeCycleEnabled.Value || indoorDawnFade.Value, OffReason = () => "all enemy cycles off", Settings = sectionSettings[CycleHoursGroup] });
+			itemSections.Add(new ItemSection { Name = IndoorPercentGroup, InSection = EnemyCycleSection, Applies = () => indoorDawnFade.Value, OffReason = () => $"{indoorDawnFade.Definition.Key} off", Settings = sectionSettings[IndoorPercentGroup] });
 			foreach (ItemSection s in itemSections) { s.Shown = s.On; }
-			foreach (ConfigEntry<bool> toggle in new[] { daytimeCycleEnabled, dawnFadeEnabled }) { toggle.SettingChanged += (_, _) => RefreshSections(); }
+			foreach (ConfigEntry<bool> toggle in new[] { daytimeCycleEnabled, dawnFadeEnabled, indoorDawnFade }) { toggle.SettingChanged += (_, _) => RefreshSections(); }
 		}
 
 		private static bool SectionOn(string section)
@@ -347,27 +358,31 @@ namespace DayCycle
 		#endregion
 
 		#region dawn enemy rules
-		// Default Vanilla: Giant Sapsucker, Kidnapper Fox, Circuit Bees (a new hive each return)
+		// Default Vanilla: Giant Sapsucker, Kidnapper Fox, Circuit Bees (a new hive each return), Butler Bees, Cadaver Bloom
 		private static readonly string[] builtInVanilla = { "giantkiwi", "bushwolf" };
 		private static Dictionary<ConfigDefinition, string>? orphanEntries;
 
-		// null for indoor enemies: they have no day cycle
 		public static ConfigEntry<EnemyCycleRule>? EnemyRule(EnemyType type)
 		{
 			EnemyCycleGroup group = EnemyCycleRules.GroupOf(type);
-			if (group == EnemyCycleGroup.Inside) { return null; }
-			string section = group == EnemyCycleGroup.Daytime ? EnemyCycleDaytimeSection : EnemyCycleOutsideSection;
+			string section = group == EnemyCycleGroup.Daytime ? EnemyCycleDaytimeSection : group == EnemyCycleGroup.Outside ? EnemyCycleOutsideSection : EnemyCycleInsideSection;
 			string key = new string(type.enemyName.Where(c => "=\n\t\\\"'[]".IndexOf(c) < 0).ToArray()).Trim();
 			string id = section + "|" + key;
 			if (enemyRules.TryGetValue(id, out ConfigEntry<EnemyCycleRule> entry)) { return entry; }
 
 			bool oldBird = EnemyCycleRules.IsOldBird(type);
 			bool bees = group == EnemyCycleGroup.Daytime && EnemyCycleRules.IsCircuitBees(type);
-			EnemyCycleRule defaultRule = bees || EnemyCycleRules.MatchesAnyName(type, builtInVanilla) ? EnemyCycleRule.Vanilla : EnemyCycleRule.Cycled;
+			bool butlerBees = EnemyCycleRules.IsButlerBees(type);
+			bool bloom = EnemyCycleRules.IsCadaverBloom(type);
+			EnemyCycleRule defaultRule = bees || butlerBees || bloom || EnemyCycleRules.MatchesAnyName(type, builtInVanilla) ? EnemyCycleRule.Vanilla : EnemyCycleRule.Cycled;
 			string what = group == EnemyCycleGroup.Daytime
 				? "Cycled returns each morning, Vanilla doesn't return"
-				: oldBird ? "Cycled powers down during the enemy cycle, Vanilla stays awake"
-					: "Cycled leaves during the enemy cycle, Vanilla stays";
+				: group == EnemyCycleGroup.Outside
+					? (oldBird ? "Cycled powers down during the enemy cycle, Vanilla stays awake"
+						: "Cycled leaves during the enemy cycle, Vanilla stays")
+					: EnemyCycleRules.NeverRemovedIndoors(type)
+						? "never removed, whatever the setting"
+						: "Cycled may leave during the enemy cycle, Vanilla stays";
 			ConfigEntry<EnemyCycleRule>? created = BindItem(section, key, defaultRule, new ConfigDescription(
 				$"{type.enemyName}: {what}."));
 			if (created != null) { enemyRules[id] = created; }
@@ -401,7 +416,7 @@ namespace DayCycle
 			// per-item entries are unbound (orphans) at startup
 			StashDisabledSections(orphans);
 
-			List<ConfigDefinition> old = orphans.Keys.Where(d => d.Section != EnemyCycleDaytimeSection && d.Section != EnemyCycleOutsideSection).ToList();
+			List<ConfigDefinition> old = orphans.Keys.Where(d => d.Section != EnemyCycleDaytimeSection && d.Section != EnemyCycleOutsideSection && d.Section != EnemyCycleInsideSection).ToList();
 			foreach (ConfigDefinition def in old) { orphans.Remove(def); }
 			if (old.Count > 0) { P.Log($"Config: removed {old.Count} old entries"); }
 		}

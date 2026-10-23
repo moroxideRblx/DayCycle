@@ -14,5 +14,6 @@
 - Flood water follows a daily tide instead of rising forever.
 - The clock goes through the game's own code, wraps at exactly 24 hours and plays the sting once per phase change. There's an optional new icon schedule too.
 - Optional outside and daytime enemy cycle, with a Cycled / Vanilla choice per enemy.
+- Optional indoor enemy cycle. Nutcrackers, Maneaters, the Ghost Girl and Cadaver Bloom always stay.
 
 # 1.0.0

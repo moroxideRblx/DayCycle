@@ -8,7 +8,7 @@ using Object = UnityEngine.Object;
 
 namespace DayCycle
 {
-	// dawn window: night enemies leave, Old Birds power down. host only
+	// dawn window: night enemies leave, Old Birds power down, optional indoor share. host only
 	public static class EnemyCycle
 	{
 		private enum WindowState { Idle, Armed, Active, Overtime, Done }
@@ -20,6 +20,9 @@ namespace DayCycle
 		private static readonly System.Random rng = new System.Random();
 		private static float nextCheck;
 		private static bool apparatusPulled;
+
+		// indoor share, no overtime: whatever's left at window end stays
+		private static readonly Dictionary<EnemyAI, float> insideDespawnHour = new Dictionary<EnemyAI, float>();
 
 		// new day = end of the dawn window (daily spawn reset)
 		private static int dayIndex = int.MinValue;
@@ -62,6 +65,7 @@ namespace DayCycle
 
 		private static bool Eclipsed => TimeOfDay.Instance.currentLevelWeather == LevelWeatherType.Eclipsed;
 		private static bool OutsideActive => ModConfig.dawnFadeEnabled.Value && !Eclipsed;
+		private static bool InsideActive => ModConfig.indoorDawnFade.Value && !Eclipsed;
 
 		#region enemy filtering
 		private static bool IsFadeType(EnemyType type)
@@ -74,6 +78,13 @@ namespace DayCycle
 		private static bool IsFadeCandidate(EnemyAI enemy)
 		{
 			return enemy != null && !enemy.isEnemyDead && IsFadeType(enemy.enemyType);
+		}
+
+		private static bool IsInsideCandidate(EnemyAI enemy)
+		{
+			if (enemy == null || enemy.isEnemyDead || enemy.isOutside || enemy.enemyType == null) { return false; }
+			EnemyType type = enemy.enemyType;
+			return EnemyCycleRules.GroupOf(type) == EnemyCycleGroup.Inside && EnemyCycleRules.RuleFor(type) == EnemyCycleRule.Cycled && !EnemyCycleRules.NeverRemovedIndoors(type);
 		}
 		#endregion
 
@@ -143,7 +154,7 @@ namespace DayCycle
 			nextCheck = Time.time + 0.5f;
 
 			CheckNewDay(self);
-			if (!OutsideActive)
+			if (!OutsideActive && !InsideActive)
 			{
 				Reset();
 				return;
@@ -168,7 +179,10 @@ namespace DayCycle
 					{
 						state = WindowState.Overtime;
 						if (despawnHour.Count > 0) { P.Log($"EnemyCycle: window over, {despawnHour.Count} outside enemies left, removing each once unseen"); }
+						if (insideDespawnHour.Count > 0) { P.Log($"EnemyCycle: window over, {insideDespawnHour.Count} indoor enemies of the share stay"); }
+						insideDespawnHour.Clear();
 					}
+					else { TickInside(self); }
 					Tick(self, overtime: false);
 					break;
 				case WindowState.Overtime:
@@ -190,6 +204,7 @@ namespace DayCycle
 			state = WindowState.Idle;
 			despawnHour.Clear();
 			staying.Clear();
+			insideDespawnHour.Clear();
 			retryAt.Clear();
 		}
 
@@ -198,9 +213,11 @@ namespace DayCycle
 			state = WindowState.Active;
 			despawnHour.Clear();
 			staying.Clear();
+			insideDespawnHour.Clear();
 			retryAt.Clear();
 			ScheduleNewEnemies(rm, windowStart: true);
-			P.Log($"EnemyCycle: window opened at {DayCycle.FormatHour(ClockHour())}, {despawnHour.Count} outside enemies scheduled (+{staying.Count} staying)");
+			ScheduleInsideShare(rm);
+			P.Log($"EnemyCycle: window opened at {DayCycle.FormatHour(ClockHour())}, {despawnHour.Count} outside (+{staying.Count} staying) / {insideDespawnHour.Count} indoor enemies scheduled");
 		}
 
 		// only the despawn percent of them leaves, the rest stay till the next window; late arrivals get the same odds
@@ -220,6 +237,41 @@ namespace DayCycle
 			}
 		}
 
+		private static void ScheduleInsideShare(RoundManager rm)
+		{
+			if (!InsideActive) { return; }
+			List<EnemyAI> present = rm.SpawnedEnemies.Where(e => e != null && !e.isEnemyDead && !e.isOutside && e.enemyType != null
+				&& EnemyCycleRules.GroupOf(e.enemyType) == EnemyCycleGroup.Inside).ToList();
+			List<EnemyAI> candidates = present.Where(IsInsideCandidate).OrderBy(_ => rng.Next()).ToList();
+			int count = Mathf.Min(Mathf.RoundToInt(present.Count * ModConfig.indoorDawnShare.Value / 100f), candidates.Count);
+			float now = HoursSinceStart();
+			float len = WindowLength();
+			foreach (EnemyAI enemy in candidates.Take(count))
+			{
+				insideDespawnHour[enemy] = now + (float)rng.NextDouble() * Mathf.Max(len - now, 0f);
+			}
+		}
+
+		private static void TickInside(RoundManager rm)
+		{
+			if (insideDespawnHour.Count == 0) { return; }
+			float now = HoursSinceStart();
+			foreach (EnemyAI enemy in insideDespawnHour.Keys.ToList())
+			{
+				if (!IsInsideCandidate(enemy) || !InsideActive) { insideDespawnHour.Remove(enemy); retryAt.Remove(enemy); continue; }
+				if (insideDespawnHour[enemy] > now || (retryAt.TryGetValue(enemy, out float t) && Time.time < t)) { continue; }
+				if (!CanRemoveInside(enemy))
+				{
+					retryAt[enemy] = Time.time + 3f + (float)rng.NextDouble() * 7f;
+					continue;
+				}
+				insideDespawnHour.Remove(enemy);
+				retryAt.Remove(enemy);
+				P.Log($"EnemyCycle: despawned indoor {enemy.enemyType.enemyName} at {DayCycle.FormatHour(ClockHour())}");
+				Despawn(rm, enemy);
+			}
+		}
+
 		// despawn takes the power off and OnDestroy does it again unless removedPowerLevel is set, so set it first
 		private static void Despawn(RoundManager rm, EnemyAI enemy)
 		{
@@ -232,6 +284,22 @@ namespace DayCycle
 		private static string PowerText(RoundManager rm)
 		{
 			return $"outside {rm.currentOutsideEnemyPower:0.#}, inside {rm.currentEnemyPower:0.#}, daytime {rm.currentDaytimeEnemyPower:0.#}";
+		}
+
+		// never while busy with a player or holding something (removal would break it)
+		private static bool CanRemoveInside(EnemyAI enemy)
+		{
+			if (enemy.NetworkObject == null || !enemy.NetworkObject.IsSpawned) { return false; }
+			if (enemy.inSpecialAnimation || enemy.inSpecialAnimationWithPlayer != null) { return false; }
+			switch (enemy)
+			{
+				case FlowermanAI bracken when bracken.carryingPlayerBody: return false;
+				case CentipedeAI flea when flea.clingingToPlayer != null: return false;
+				case HoarderBugAI bug when bug.heldItem != null: return false;
+				case JesterAI jester when jester.currentBehaviourStateIndex != 0: return false;
+			}
+			if (enemy.targetPlayer != null || enemy.movingTowardsTargetPlayer) { return false; }
+			return !AnyPlayerCanSee(enemy, insideBuilding: true);
 		}
 
 		#region new day
@@ -262,11 +330,20 @@ namespace DayCycle
 				rm.currentOutsideEnemyPowerNoDeaths = rm.currentOutsideEnemyPower;
 				groups.Add("outside");
 			}
+			if (ModConfig.indoorDawnFade.Value)
+			{
+				P.LogDebug($"EnemyCycle: inside reset, power {rm.currentEnemyPower:0.#} (no deaths {rm.currentEnemyPowerNoDeaths:0.#}) / {rm.currentMaxInsidePower:0.#}, diversity {rm.currentInsideEnemyDiversityLevel} / {rm.currentMaxInsideDiversityLevel}");
+				int freed = ResetSpawnCounts(rm, level.Enemies, EnemyCycleGroup.Inside, chargesDiversity: true);
+				rm.currentInsideEnemyDiversityLevel = Mathf.Max(rm.currentInsideEnemyDiversityLevel - freed, 0);
+				rm.currentEnemyPowerNoDeaths = rm.currentEnemyPower;
+				rm.cannotSpawnMoreInsideEnemies = false;
+				groups.Add("inside");
+			}
 			if (groups.Count > 0) { P.Log($"EnemyCycle: new day at {DayCycle.FormatHour(ClockHour())}, spawn counts reset for {string.Join(", ", groups)} enemies"); }
-			P.LogDebug($"EnemyCycle: after reset, outside diversity {rm.currentOutsideEnemyDiversityLevel}");
+			P.LogDebug($"EnemyCycle: after reset, outside diversity {rm.currentOutsideEnemyDiversityLevel}, inside diversity {rm.currentInsideEnemyDiversityLevel}");
 		}
 
-		// count = the ones still alive
+		// count = alive + queued in vents (v81 charges a vent enemy when it's assigned, not when it crawls out)
 		// none left: refund its diversity, or it pays twice and may never come back (v81 charges it on first spawn)
 		private static int ResetSpawnCounts(RoundManager rm, IEnumerable<SpawnableEnemyWithRarity> list, EnemyCycleGroup group, bool chargesDiversity)
 		{
@@ -275,14 +352,16 @@ namespace DayCycle
 			{
 				if (EnemyCycleRules.GroupOf(type!) != group || EnemyCycleRules.RuleFor(type) == EnemyCycleRule.Vanilla) { continue; }
 				int alive = rm.SpawnedEnemies.Count(e => e != null && !e.isEnemyDead && e.enemyType == type);
-				bool refund = chargesDiversity && alive == 0 && type!.hasSpawnedAtLeastOne;
+				int queued = rm.allEnemyVents == null ? 0 : rm.allEnemyVents.Count(v => v != null && v.occupied && v.enemyType == type);
+				int present = alive + queued;
+				bool refund = chargesDiversity && present == 0 && type!.hasSpawnedAtLeastOne;
 				if (refund)
 				{
 					type!.hasSpawnedAtLeastOne = false;
 					freed += type.DiversityPowerLevel;
 				}
-				P.LogDebug($"EnemyCycle: {type!.enemyName} living {alive}, count {type.numberSpawned} -> {alive}{(refund ? $", diversity {type.DiversityPowerLevel} refunded" : "")}");
-				type.numberSpawned = alive;
+				P.LogDebug($"EnemyCycle: {type!.enemyName} living {alive} + queued {queued}, count {type.numberSpawned} -> {present}{(refund ? $", diversity {type.DiversityPowerLevel} refunded" : "")}");
+				type.numberSpawned = present;
 			}
 			return freed;
 		}

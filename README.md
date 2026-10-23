@@ -22,6 +22,7 @@ Everything below is off by default, turn on what you like in the config.
 
 - Outside enemy cycle: night enemies leave between 4 and 7 AM and come back at night. Old Birds power down instead. Nothing leaves while you're looking at it or while it's chasing someone.
 - Daytime enemy cycle: manticoils and locusts still leave at nightfall, but now they come back every morning.
+- Indoor enemy cycle: some indoor enemies leave during the same hours (half by default). Nutcrackers, Maneaters, the Ghost Girl and Cadaver Bloom always stay.
 - You can set every enemy, vanilla or modded, to follow the cycle or act like vanilla.
 
 ## Config

@@ -31,10 +31,21 @@ namespace DayCycle
 
 		public static bool IsOldBird(EnemyType type) => PrefabHas<RadMechAI>(type);
 		public static bool IsCircuitBees(EnemyType type) => PrefabHas<RedLocustBees>(type);
+		public static bool IsButlerBees(EnemyType type) => PrefabHas<ButlerBeesEnemyAI>(type);
+		public static bool IsCadaverBloom(EnemyType type) => PrefabHas<CadaverBloomAI>(type);
 
 		private static bool PrefabHas<T>(EnemyType type) where T : Component
 		{
 			return type.enemyPrefab != null && type.enemyPrefab.GetComponent<T>() != null;
+		}
+
+		// never removed indoors: nutcracker gun only drops on a real death, maneater baby can be held,
+		// ghost girl and cadaver bloom are bound to a player
+		public static bool NeverRemovedIndoors(EnemyType type)
+		{
+			GameObject? prefab = type.enemyPrefab;
+			return prefab != null && (prefab.GetComponent<NutcrackerEnemyAI>() != null || prefab.GetComponent<CaveDwellerAI>() != null
+				|| prefab.GetComponent<DressGirlAI>() != null || prefab.GetComponent<CadaverBloomAI>() != null);
 		}
 
 		#region names
@@ -109,7 +120,7 @@ namespace DayCycle
 				if (type.enemyPrefab == null || string.IsNullOrWhiteSpace(type.enemyName)) { continue; }
 				if (ModConfig.EnemyRule(type) != null) { perGroup[(int)GroupOf(type)]++; }
 			}
-			P.Log($"EnemyCycle: enemy rules for {perGroup[0]} daytime, {perGroup[1]} outside enemy types");
+			P.Log($"EnemyCycle: enemy rules for {perGroup[0]} daytime, {perGroup[1]} outside, {perGroup[2]} inside enemy types");
 		}
 		#endregion
 	}
