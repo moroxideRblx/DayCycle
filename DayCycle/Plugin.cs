@@ -34,6 +34,7 @@ namespace DayCycle
 
 			DayCycle.Patch();
 			FallbackSun.Patch();
+			MoonBlacklist.Patch();
 
 			Logger.LogInfo($"{MyPluginInfo.PLUGIN_GUID} [{MyPluginInfo.PLUGIN_VERSION}] loaded");
 		}

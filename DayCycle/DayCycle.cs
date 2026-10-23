@@ -12,10 +12,6 @@ namespace DayCycle
 	{
 		public static Animator sunAnim;
 		internal static Animator? fallbackSun; // this landing's sun when it has no 24h version
-
-		// the game's own day length, read before it's set to 24
-		internal static int VanillaHours = 18;
-
 		internal static void Patch()
 		{
 			Hook("TimeOfDay.Awake", () => On.TimeOfDay.Awake += TimeOfDay_Awake);
@@ -73,6 +69,7 @@ namespace DayCycle
 		private static void TimeOfDay_TimeOfDayEvents1(On.TimeOfDay.orig_TimeOfDayEvents orig, TimeOfDay self)
 		{
 			orig(self);
+			if (MoonBlacklist.Active) { return; }
 			if (self.dayMode == DayMode.Dawn && self.dayModeLastTimePlayerWasOutside == DayMode.Midnight) {
 				self.PlayerSeesNewTimeOfDay();
 			}
@@ -86,7 +83,11 @@ namespace DayCycle
 			string sunAnimName = sunAnim.runtimeAnimatorController.name;
 			SelectableLevel? level = StartOfRound.Instance != null ? StartOfRound.Instance.currentLevel : null;
 
-			if (API.sunAnimators.TryGetValue(sunAnimName, out RuntimeAnimatorController newAnimator))
+			if (MoonBlacklist.Active)
+			{
+				P.Log($"Sun: {sunAnimName} unchanged (vanilla day)");
+			}
+			else if (API.sunAnimators.TryGetValue(sunAnimName, out RuntimeAnimatorController newAnimator))
 			{
 				sunAnim.runtimeAnimatorController = newAnimator;
 				P.Log($"Sun: replaced {sunAnimName} with 24h version");
@@ -107,7 +108,7 @@ namespace DayCycle
 		// the save loads before TimeOfDay.Start, so set 24h here or a new save's deadline is in 18h days
 		private static void TimeOfDay_Awake(On.TimeOfDay.orig_Awake orig, TimeOfDay self)
 		{
-			if (self.numberOfHours > 0 && self.numberOfHours != 24) { VanillaHours = self.numberOfHours; }
+			if (self.numberOfHours > 0 && self.numberOfHours != 24) { MoonBlacklist.VanillaHours = self.numberOfHours; }
 			self.numberOfHours = 24;
 			self.totalTime = self.lengthOfHours * self.numberOfHours;
 			orig(self);
@@ -123,6 +124,7 @@ namespace DayCycle
 		#region TimeofDay
 		private static void TimeOfDay_MoveGlobalTime(On.TimeOfDay.orig_MoveGlobalTime orig, TimeOfDay self)
 		{
+			if (MoonBlacklist.Active) { orig(self); return; }
 			float dt = Time.deltaTime * self.globalTimeSpeedMultiplier;
 			// never below 0: once the day's end is passed the difference turns negative and would refill the deadline every frame
 			self.timeUntilDeadline -= Mathf.Max(Mathf.Clamp(self.globalTime + dt, 0f, self.globalTimeAtEndOfDay*0.996f) - self.globalTime, 0f); // NOTE: only to keep intended behaviour
@@ -133,17 +135,19 @@ namespace DayCycle
 			ILCursor c = new ILCursor(il);
 			if (c.TryGotoNext(MoveType.Before, x => x.MatchStloc(0)))
 			{
-				c.EmitDelegate<Func<float, float>>((num) => { return Mathf.Clamp(num, 0f, TimeOfDay.Instance.globalTimeAtEndOfDay); }); // might change later
+				c.EmitDelegate<Func<float, float>>((num) => { return MoonBlacklist.Active ? num : Mathf.Clamp(num, 0f, TimeOfDay.Instance.globalTimeAtEndOfDay); }); // might change later
 			}
 			else { P.Fail("pass fail"); }
 		}
 
 		private static float TimeOfDay_CalculatePlanetTime(On.TimeOfDay.orig_CalculatePlanetTime orig, TimeOfDay self, SelectableLevel level)
 		{
+			if (MoonBlacklist.Active) { return orig(self, level); }
 			return (self.globalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % (self.totalTime + 1f);
 		}
 		private static float TimeOfDay_CalculatePlanetTimeClampToEndOfDay(On.TimeOfDay.orig_CalculatePlanetTimeClampToEndOfDay orig, TimeOfDay self, SelectableLevel level)
 		{
+			if (MoonBlacklist.Active) { return orig(self, level); }
 			return (self.globalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % (self.totalTime + 1f);
 		}
 		private static void TimeOfDay_MoveTimeOfDay(ILContext il)
@@ -175,13 +179,14 @@ namespace DayCycle
 			if (c.TryGotoNext(MoveType.Before, x => x.MatchLdcR4(3f)))
 			{
 				c.Remove();
-				c.EmitDelegate<Func<float>>(() => { return ModConfig.intervalSetting.Value; });
+				c.EmitDelegate<Func<float>>(() => { return MoonBlacklist.Active ? 3f : ModConfig.intervalSetting.Value; });
 
 			} else { P.Fail("cant patch interval..."); }
 		}
 		// fallback suns use vanilla's 6 AM - midnight range (capped at 0.99 like vanilla) and hold the night pose after
 		private static float SunTime(TimeOfDay tod)
 		{
+			if (MoonBlacklist.Active) { return Mathf.Clamp(tod.normalizedTimeOfDay, 0f, 0.99f); }
 			float normalized = ((tod.normalizedTimeOfDay % 1f) + 1f) % 1f;
 			if (fallbackSun == null || tod.sunAnimator != fallbackSun) { return normalized; }
 			float hoursSince6AM = normalized * 24f;
@@ -198,6 +203,7 @@ namespace DayCycle
 				c.Emit(OpCodes.Ldarg_0);
 				c.EmitDelegate<Func<TimeOfDay, bool>>(
 					(self) => {
+						if (MoonBlacklist.Active) { return self.currentDayTime / self.totalTime > 0.9f; }
 						if (self.globalTime > float.MaxValue - 108) { return true; }
 						return false;
 					}
@@ -214,6 +220,7 @@ namespace DayCycle
 				c.Emit(OpCodes.Ldarg_0);
 				c.EmitDelegate<Func<TimeOfDay, bool>>(
 					(self) => {
+						if (MoonBlacklist.Active) { return self.currentDayTime / self.totalTime >= self.shipLeaveAutomaticallyTime; }
 						if (self.globalTime >= float.MaxValue - 4.32) { return true; }
 						if (LeaveEarlyVoted(self) && PlanetTimeUnwrapped(self) >= leaveEarlyAt)
 						{
@@ -242,7 +249,7 @@ namespace DayCycle
 			if (c.TryGotoNext(MoveType.After, x => x.MatchLdfld<TimeOfDay>(nameof(TimeOfDay.normalizedTimeOfDay))) && c.Next.MatchLdcR4(out float vanillaValue))
 			{
 				c.Remove();
-				c.EmitDelegate<Func<float>>(() => vanillaValue * VanillaHours / 24f);
+				c.EmitDelegate<Func<float>>(() => MoonBlacklist.Active ? vanillaValue : vanillaValue * MoonBlacklist.Scale);
 			}
 			else { P.Fail("leave-early vote time not found"); }
 		}
@@ -251,7 +258,7 @@ namespace DayCycle
 		{
 			orig(self, timeToLeaveEarly, votes);
 			// only the call that applied it (the host also passes here when sending)
-			if (self.shipLeaveAutomaticallyTime != timeToLeaveEarly || LeaveEarlyVoted(self)) { return; }
+			if (MoonBlacklist.Active || self.shipLeaveAutomaticallyTime != timeToLeaveEarly || LeaveEarlyVoted(self)) { return; }
 			leaveEarlyFor = timeToLeaveEarly;
 			leaveEarlyAt = PlanetTimeUnwrapped(self) + (timeToLeaveEarly - self.normalizedTimeOfDay) * self.totalTime; // the time in "Please return by X"
 			P.LogDebug($"Ship leave: vote passed with {votes} votes, leaving at {FormatHour((leaveEarlyAt / self.lengthOfHours + 6f) % 24f)}");
@@ -265,6 +272,7 @@ namespace DayCycle
 		};
 		private static DayMode TimeOfDay_GetDayPhase(On.TimeOfDay.orig_GetDayPhase orig, TimeOfDay self, float time)
 		{
+			if (MoonBlacklist.Active) { return orig(self, time); }
 			if (time >= phaseTimes[DayMode.Dawn]) { return DayMode.Dawn; } 
 			else if (time >= phaseTimes[DayMode.Midnight]) { return DayMode.Midnight; } 
 			else if (time >= phaseTimes[DayMode.Sundown]) { return DayMode.Sundown; } 
@@ -281,7 +289,7 @@ namespace DayCycle
 			if (c.TryGotoNext(MoveType.After, x => x.MatchLdfld<TimeOfDay>(nameof(TimeOfDay.normalizedTimeOfDay))))
 			{
 				c.Remove();
-				c.EmitDelegate<Func<float, bool>>((norm) => { return (norm < 0.15f || norm >= 0.9f); });
+				c.EmitDelegate<Func<float, bool>>((norm) => { return MoonBlacklist.Active ? norm < 0.2f : (norm < 0.15f || norm >= 0.9f); });
 				c.Next.OpCode = OpCodes.Brfalse;
 			}
 			else { P.Fail("coundt find threat..."); }
@@ -290,7 +298,7 @@ namespace DayCycle
 			if (c.TryGotoNext(MoveType.After, x => x.MatchLdfld<TimeOfDay>(nameof(TimeOfDay.normalizedTimeOfDay))))
 			{
 				c.Remove();
-				c.EmitDelegate<Func<float, bool>>((norm) => { return (norm >= 0.6f && norm < 0.9f); });
+				c.EmitDelegate<Func<float, bool>>((norm) => { return MoonBlacklist.Active ? norm > 0.8f : (norm >= 0.6f && norm < 0.9f); });
 				c.Next.OpCode = OpCodes.Brfalse;
 			}
 			else { P.Fail("coundt find threat 2..."); }
@@ -323,15 +331,16 @@ namespace DayCycle
 		private static void RoundManager_AdvanceHourAndSpawnNewBatchOfEnemies(ILContext il)
 		{
 			ILCursor c = new ILCursor(il);
-			if (c.TryGotoNext(MoveType.After, x => x.MatchLdfld<TimeOfDay>(nameof(TimeOfDay.normalizedTimeOfDay))))
+			if (c.TryGotoNext(MoveType.After, x => x.MatchLdfld<TimeOfDay>(nameof(TimeOfDay.normalizedTimeOfDay))) && c.Next.Operand is float vanillaValue)
 			{
-				c.Next.Operand = 0.225f;
+				c.Remove();
+				c.EmitDelegate<Func<float>>(() => MoonBlacklist.Active ? vanillaValue : 0.225f);
 			}
 			else { P.Fail("advance rejected.."); }
 		}
 
 		// vanilla's 18h fraction on the 24h day
-		private static float LeaveTime(TimeOfDay tod) => tod.normalizedTimeOfDay * (4.0f / 3f);
+		private static float LeaveTime(TimeOfDay tod) => MoonBlacklist.Active ? tod.normalizedTimeOfDay : tod.normalizedTimeOfDay * (4.0f / 3f);
 		#endregion
 
 		#region RoundManager
@@ -344,6 +353,7 @@ namespace DayCycle
 				c.Emit(OpCodes.Ldarg_0);    // self
 				c.Emit(OpCodes.Ldloc_0);    // num (basically timeUpToCurrentHour)
 				c.EmitDelegate<Func<float, RoundManager, float, float>>((vanilla, rm, num) => {
+					if (MoonBlacklist.Active) { return LogCurve(rm, "daytime", rm.currentLevel.daytimeEnemySpawnChanceThroughDay, vanilla); }
 					float val = (num % rm.timeScript.totalTime) / rm.timeScript.totalTime;
 					return LogCurve(rm, "daytime", rm.currentLevel.daytimeEnemySpawnChanceThroughDay, val < 0.75f ? val * (4.0f / 3.0f) : 1 - (val - 0.75f) * 4);
 				});
@@ -364,7 +374,7 @@ namespace DayCycle
 				c.Emit(OpCodes.Ldarg_0);    // self
 				c.Emit(OpCodes.Ldloc_0);    // num
 				c.EmitDelegate<Func<float, RoundManager, float, float>>((vanilla, rm, num) => // num keeps growing past one day
-					LogCurve(rm, "outside", rm.currentLevel.outsideEnemySpawnChanceThroughDay, DayCurve(num / rm.timeScript.totalTime)));
+					LogCurve(rm, "outside", rm.currentLevel.outsideEnemySpawnChanceThroughDay, MoonBlacklist.Active ? vanilla : DayCurve(num / rm.timeScript.totalTime)));
 			}
 			else { P.Fail("can't go outside"); }
 		}
@@ -396,7 +406,7 @@ namespace DayCycle
 		}
 
 		// hour counter and vent spawn times
-		private static float SpawnDayTime(TimeOfDay tod) => PlanetTimeUnwrapped(tod);
+		private static float SpawnDayTime(TimeOfDay tod) => MoonBlacklist.Active ? tod.currentDayTime : PlanetTimeUnwrapped(tod);
 
 		// vent spawn times come from the unwrapped hour counter
 		private static void UseUnwrappedDayTime(ILContext il, string name)
@@ -425,6 +435,7 @@ namespace DayCycle
 			{
 				c.Emit(OpCodes.Ldarg_0);
 				c.EmitDelegate<Func<float, RoundManager, float>>((vanilla, rm) => {
+					if (MoonBlacklist.Active) { return LogCurve(rm, "inside", rm.currentLevel.enemySpawnChanceThroughoutDay, vanilla); }
 					float val = rm.timeScript.currentDayTime / rm.timeScript.totalTime;
 					return LogCurve(rm, "inside", rm.currentLevel.enemySpawnChanceThroughoutDay, val < 0.75f ? val * (4.0f / 3.0f) : 1 - (val - 0.75f) * 4);
 				});
@@ -444,7 +455,7 @@ namespace DayCycle
 			return (val < 0.75f ? val * (4.0f / 3.0f) : 1 - (val - 0.75f) * 4);
 		}
 
-		private static float CurveTime(float val) => DayCurve(val);
+		private static float CurveTime(float val) => MoonBlacklist.Active ? val : DayCurve(val);
 
 		// DayCurve() before every AnimationCurve.Evaluate fed "x / totalTime" (directly or via a local);
 		// matches by pattern, not local index, so it survives the game reshuffling locals
@@ -483,6 +494,7 @@ namespace DayCycle
 
 		private static void FloodWeather_OnGlobalTimeSync(On.FloodWeather.orig_OnGlobalTimeSync orig, FloodWeather self)
 		{
+			if (MoonBlacklist.Active) { orig(self); return; }
 			self.floodLevelOffset = Mathf.Clamp(TimeOfDay.Instance.globalTime / TimeOfDay.Instance.totalTime, 0f, 100f) * TimeOfDay.Instance.currentWeatherVariable2;
 			// right now this code makes the flood level keep rising. its nutso
 			// add a way for the level to go down eventually?
@@ -490,6 +502,7 @@ namespace DayCycle
 
 		private static void HUDManager_SetClock(On.HUDManager.orig_SetClock orig, HUDManager self, float timeNormalized, float numberOfHours, bool createNewLine)
 		{
+			if (MoonBlacklist.Active) { orig(self, timeNormalized, numberOfHours, createNewLine); return; }
 			int num = ((int)(timeNormalized * (60f * numberOfHours)) + 360) % (int)(60f * numberOfHours);
 			int num2 = (int)Mathf.Floor(num / 60);
 
@@ -507,6 +520,7 @@ namespace DayCycle
 		// the leave-early vote's "Please return by X": same formatting as the clock above (vanilla shows anything past midnight as 12:00 AM)
 		private static string HUDManager_GetClockTimeFormatted(On.HUDManager.orig_GetClockTimeFormatted orig, HUDManager self, float timeNormalized, float numberOfHours, bool createNewLine)
 		{
+			if (MoonBlacklist.Active) { return orig(self, timeNormalized, numberOfHours, createNewLine); }
 			int num = ((int)(timeNormalized * (60f * numberOfHours)) + 360) % (int)(60f * numberOfHours);
 			int num2 = (int)Mathf.Floor(num / 60);
 
@@ -519,7 +533,7 @@ namespace DayCycle
 		}
 		private static void HUDManager_SetClockIcon(On.HUDManager.orig_SetClockIcon orig, HUDManager self, DayMode dayMode)
 		{
-			if (dayMode == DayMode.Dawn && TimeOfDay.Instance.normalizedTimeOfDay >= phaseTimes[DayMode.Dawn])
+			if (dayMode == DayMode.Dawn && !MoonBlacklist.Active && TimeOfDay.Instance.normalizedTimeOfDay >= phaseTimes[DayMode.Dawn])
 			{
 				dayMode = DayMode.Noon;
 			}

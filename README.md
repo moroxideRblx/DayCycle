@@ -13,6 +13,7 @@ Updated for Lethal Company v81.
 - Modded moons keep their own sun and fade into the morning between 3 and 6 AM.
 - Spawns follow the day: busier towards midnight, calmer towards dawn, every day you stay.
 - Each moon visit costs one deadline day however long you stay.
+- Moon blacklist: moons on it get the plain vanilla 18-hour day.
 
 ## Credits
 

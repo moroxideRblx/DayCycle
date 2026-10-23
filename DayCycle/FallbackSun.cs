@@ -31,7 +31,7 @@ namespace DayCycle
 			orig(self);
 
 			Animator? sun = DayCycle.fallbackSun;
-			bool dawn = sun != null && self.sunAnimator == sun && self.currentDayTimeStarted && InDawnWindow(self, out _);
+			bool dawn = !MoonBlacklist.Active && sun != null && self.sunAnimator == sun && self.currentDayTimeStarted && InDawnWindow(self, out _);
 			if (!dawn)
 			{
 				Stop();

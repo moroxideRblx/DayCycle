@@ -10,5 +10,6 @@
 - Rebuilt the 24-hour sun bundle for all three sun types (normal, stormy, eclipse).
 - Modded moons keep their own sun and fade into the morning from 3 to 6 AM.
 - Settings moved into numbered sections, with optional LethalConfig support and a debug log option.
+- Moon blacklist: moons on it get the plain vanilla day.
 
 # 1.0.0

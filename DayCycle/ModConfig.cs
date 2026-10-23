@@ -15,6 +15,7 @@ namespace DayCycle
 		public const string DayCycleSection = "1. Day Cycle";
 		public const string ClockSection = "5. Clock";
 
+		public static ConfigEntry<string> moonBlacklist;
 		public static ConfigEntry<bool> debugLogging;
 		public static ConfigEntry<float> intervalSetting;
 
@@ -27,6 +28,8 @@ namespace DayCycle
 			bool saveOnSet = cfg.SaveOnConfigSet;
 			cfg.SaveOnConfigSet = false;
 
+			moonBlacklist = Bind(cfg, DayCycleSection, "Moon blacklist", "Gordion",
+				"Moons that use the vanilla day. Comma-separated, e.g. Gordion, Embrion.");
 			debugLogging = Bind(cfg, DayCycleSection, "Debug logging", false,
 				"Extra log lines for bug reports.");
 
