@@ -16,5 +16,6 @@
 - Optional outside and daytime enemy cycle, with a Cycled / Vanilla choice per enemy.
 - Optional indoor enemy cycle. Nutcrackers, Maneaters, the Ghost Girl and Cadaver Bloom always stay.
 - Deadline modes: OneDayExtended stays the default, Days and DayAndHour are optional.
+- Optional random landing time per moon.
 
 # 1.0.0

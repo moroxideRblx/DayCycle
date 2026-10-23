@@ -26,6 +26,7 @@ Everything below is off by default, turn on what you like in the config.
 - You can set every enemy, vanilla or modded, to follow the cycle or act like vanilla.
 - Days deadline mode: a day goes after 18 hours on a moon, then you get 6 free hours.
 - DayAndHour deadline mode: only the hours you spend on moons count, with optional landing, travel and Company costs.
+- Random landing time: each moon gets a random landing hour, shown on the terminal and the ship screen. Land at night and the night crowd is already out.
 
 ## Config
 

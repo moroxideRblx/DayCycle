@@ -157,7 +157,7 @@ namespace DayCycle
 
 		private static float TimeOfDay_CalculatePlanetTime(On.TimeOfDay.orig_CalculatePlanetTime orig, TimeOfDay self, SelectableLevel level)
 		{
-			if (MoonBlacklist.Active) { return orig(self, level); }
+			if (MoonBlacklist.Active || MoonBlacklist.Original) { return orig(self, level); }
 			return (self.globalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % self.totalTime; // exactly 24h (vanilla wraps at totalTime + 1)
 		}
 		private static float TimeOfDay_CalculatePlanetTimeClampToEndOfDay(On.TimeOfDay.orig_CalculatePlanetTimeClampToEndOfDay orig, TimeOfDay self, SelectableLevel level)

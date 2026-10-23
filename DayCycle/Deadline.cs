@@ -662,6 +662,7 @@ namespace DayCycle
 			TimeOfDay tod = Tod;
 			if (self.currentLevel.planetHasTime || tod.timeUntilDeadline <= 0f) { tod.OnDayChanged(); }
 			tod.globalTime = 100f;
+			if (self.IsServer) { Landing.Roll(); } // before the map screen is rebuilt
 			tod.UpdateProfitQuotaCurrentTime();
 			if (self.currentLevel.planetHasTime)
 			{

@@ -74,11 +74,50 @@ namespace DayCycle
 			}
 			return ids;
 		}
+
+		// DayCycle's time hooks run the game's own method (with any other mod's patches) while this is set
+		internal static bool Original { get; private set; }
+
+		// game's own landing time: day starts at globalTime 100 on its 18h day, HUD shows whole minutes
+		// asks the game's own CalculatePlanetTime so DawnLib / MoonDaySpeedMultiplierPatcher speeds count;
+		// the formula is only a fallback for when there's no TimeOfDay
+		internal static float LandingHour(SelectableLevel level)
+		{
+			TimeOfDay tod = TimeOfDay.Instance;
+			if (tod == null) { return 6f + Mathf.Floor((TimeOfDay.startingGlobalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % (60f * VanillaHours + 1f)) / 60f; }
+
+			float globalTime = tod.globalTime, totalTime = tod.totalTime;
+			int hours = tod.numberOfHours;
+			float dayTime;
+			try
+			{
+				Original = true;
+				tod.globalTime = TimeOfDay.startingGlobalTime;
+				tod.numberOfHours = VanillaHours;
+				tod.totalTime = tod.lengthOfHours * VanillaHours;
+				dayTime = tod.CalculatePlanetTime(level);
+			}
+			finally
+			{
+				Original = false;
+				tod.globalTime = globalTime;
+				tod.numberOfHours = hours;
+				tod.totalTime = totalTime;
+			}
+			return 6f + Mathf.Floor(dayTime * 60f / tod.lengthOfHours) / 60f;
+		}
 		#endregion
 
 		#region sync
-		// every 10 s for late joiners, on a list change and when the lever is pulled
+		// the host changed the list
 		internal static void SyncNow()
+		{
+			Send();
+			if (IsHost && StartOfRound.Instance != null && StartOfRound.Instance.inShipPhase) { StartOfRound.Instance.SetMapScreenInfoToCurrentLevel(); } // landing time label
+		}
+
+		// every 10 s for late joiners, on a list change and when the lever is pulled
+		private static void Send()
 		{
 			nextSync = Time.time + 10f;
 			CustomMessagingManager? messaging = NetworkManager.Singleton?.CustomMessagingManager;
@@ -105,12 +144,13 @@ namespace DayCycle
 			if (syncedMoons.SetEquals(ids)) { return; }
 			syncedMoons.Clear();
 			foreach (int id in ids) { syncedMoons.Add(id); }
+			if (StartOfRound.Instance != null && StartOfRound.Instance.inShipPhase) { StartOfRound.Instance.SetMapScreenInfoToCurrentLevel(); }
 		}
 
 		private static void TimeOfDay_Update(On.TimeOfDay.orig_Update orig, TimeOfDay self)
 		{
 			orig(self);
-			if (IsHost && Time.time >= nextSync) { SyncNow(); }
+			if (IsHost && Time.time >= nextSync) { Send(); }
 		}
 		#endregion
 
@@ -126,7 +166,7 @@ namespace DayCycle
 		// host, lever pulled: resent ahead of the scene load for clients that just joined
 		private static void StartOfRound_StartGame(On.StartOfRound.orig_StartGame orig, StartOfRound self)
 		{
-			if (self.IsServer && self.inShipPhase) { SyncNow(); }
+			if (self.IsServer && self.inShipPhase) { Send(); }
 			orig(self);
 		}
 

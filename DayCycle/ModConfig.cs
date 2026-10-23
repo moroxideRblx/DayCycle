@@ -31,6 +31,9 @@ namespace DayCycle
 		public const string DaysModeSection = "3.1 Days Mode";
 		public const string DayAndHourModeSection = "3.2 DayAndHour Mode";
 		public const string DeadlineMoonsSection = "3.3 Deadline Moons";
+		public const string LandingSection = "6. Landing";
+		public const string LandingMoonsSection = "6.1 Landing Moons";
+		private const string LandingSettingsGroup = "6. Landing > random landing settings";
 
 		public static ConfigEntry<string> moonBlacklist;
 		public static ConfigEntry<bool> debugLogging;
@@ -71,6 +74,14 @@ namespace DayCycle
 		public static ConfigEntry<bool> teamWipePenaltyEnabled;
 		public static ConfigEntry<float> teamWipePenaltyHours;
 		private static readonly Dictionary<string, ConfigEntry<float>> moonTravelHours = new Dictionary<string, ConfigEntry<float>>();
+
+		public static ConfigEntry<bool> randomLanding;
+		public static ConfigEntry<float> earliestLandingHour;
+		public static ConfigEntry<float> latestLandingHour;
+		public static ConfigEntry<bool> enemiesPresentOnLateLanding;
+		public static ConfigEntry<bool> showMoonHourOnTerminal;
+		public static ConfigEntry<bool> showMoonHourOnShipScreen;
+		private static readonly Dictionary<string, ConfigEntry<bool>> moonRandomLanding = new Dictionary<string, ConfigEntry<bool>>();
 
 		// in display order, for LethalConfig
 		private static readonly List<ConfigEntryBase> all = new List<ConfigEntryBase>();
@@ -175,6 +186,26 @@ namespace DayCycle
 			clockIcons = Bind(cfg, ClockSection, "Clock icons", ClockIcons.Original,
 				"HUD icon and day phase schedule: Original or DayCycle.");
 
+			randomLanding = Bind(cfg, LandingSection, "Random landing time", false,
+				"Land at a random hour on each moon.");
+			// the rest only exists while random landing is on
+			BindSetting(cfg, LandingSection, "Earliest landing hour", 0f, e => earliestLandingHour = e,
+				"Earliest random landing hour (6.5 = 6:30 AM).",
+				new AcceptableValueRange<float>(0f, 24f), group: LandingSettingsGroup);
+			BindSetting(cfg, LandingSection, "Latest landing hour", 24f, e => latestLandingHour = e,
+				"Latest random landing hour.",
+				new AcceptableValueRange<float>(0f, 24f), group: LandingSettingsGroup);
+			BindSetting(cfg, LandingSection, "Enemies already present on late landing", true, e => enemiesPresentOnLateLanding = e,
+				"Late landings find outdoor enemies already there.",
+				group: LandingSettingsGroup);
+			// per player, display only
+			BindSetting(cfg, LandingSection, "Show moon hour on terminal", true, e => showMoonHourOnTerminal = e,
+				"Show landing times on the terminal.",
+				group: LandingSettingsGroup);
+			BindSetting(cfg, LandingSection, "Show moon hour on ship screen", true, e => showMoonHourOnShipScreen = e,
+				"Show the landing time on the ship screen.",
+				group: LandingSettingsGroup);
+
 			SetUpItemSections();
 			MigrateOldEntries(cfg);
 			foreach (ItemSection s in itemSections.Where(x => x.Settings != null && !x.On)) { DisableSection(s); }
@@ -195,10 +226,22 @@ namespace DayCycle
 		}
 
 		private const string MoonKeyPrefix = "Travel hours - ";
+		private const string RandomLandingPrefix = "Random landing - ";
 
 		private static string MoonKey(string prefix, string planetName)
 		{
 			return prefix + new string(planetName.Where(c => "=\n\t\\\"'[]".IndexOf(c) < 0).ToArray()).Trim();
+		}
+
+		// null while the feature is off
+		public static ConfigEntry<bool>? RandomLandingFor(string planetName)
+		{
+			string key = MoonKey(RandomLandingPrefix, planetName);
+			if (moonRandomLanding.TryGetValue(key, out ConfigEntry<bool> entry)) { return entry; }
+			ConfigEntry<bool>? created = BindItem(LandingMoonsSection, key, true, new ConfigDescription(
+				$"Random landing hour on {planetName}."));
+			if (created != null) { moonRandomLanding[key] = created; }
+			return created;
 		}
 
 		// null while the feature is off
@@ -297,8 +340,10 @@ namespace DayCycle
 			itemSections.Add(new ItemSection { Name = DayAndHourModeSection, Applies = () => deadlineMode.Value == DeadlineMode.DayAndHour, OffReason = modeIs, Settings = sectionSettings[DayAndHourModeSection] });
 			itemSections.Add(new ItemSection { Name = DeadlineMoonsSection, Applies = () => deadlineMode.Value == DeadlineMode.DayAndHour && travelPenaltyEnabled.Value,
 				OffReason = () => deadlineMode.Value != DeadlineMode.DayAndHour ? modeIs() : $"{travelPenaltyEnabled.Definition.Key} off", Rebuild = Deadline.RebuildMoonList, ClearCache = moonTravelHours.Clear });
+			itemSections.Add(new ItemSection { Name = LandingSettingsGroup, InSection = LandingSection, Applies = () => randomLanding.Value, OffReason = () => $"{randomLanding.Definition.Key} off", Settings = sectionSettings[LandingSettingsGroup] });
+			itemSections.Add(new ItemSection { Name = LandingMoonsSection, Applies = () => randomLanding.Value, OffReason = () => $"{randomLanding.Definition.Key} off", Rebuild = Landing.CreateMoonEntries, ClearCache = moonRandomLanding.Clear });
 			foreach (ItemSection s in itemSections) { s.Shown = s.On; }
-			foreach (ConfigEntry<bool> toggle in new[] { daytimeCycleEnabled, dawnFadeEnabled, indoorDawnFade }) { toggle.SettingChanged += (_, _) => RefreshSections(); }
+			foreach (ConfigEntry<bool> toggle in new[] { daytimeCycleEnabled, dawnFadeEnabled, indoorDawnFade, randomLanding }) { toggle.SettingChanged += (_, _) => RefreshSections(); }
 			deadlineMode.SettingChanged += (_, _) => RefreshSections();
 			deadlineDaysSource.SettingChanged += (_, _) => RefreshSections();
 		}
@@ -523,6 +568,7 @@ namespace DayCycle
 			StashDisabledSections(orphans);
 
 			List<ConfigDefinition> old = orphans.Keys.Where(d => !(d.Section == DeadlineMoonsSection && d.Key.StartsWith(MoonKeyPrefix))
+				&& !(d.Section == LandingMoonsSection && d.Key.StartsWith(RandomLandingPrefix))
 				&& d.Section != EnemyCycleDaytimeSection && d.Section != EnemyCycleOutsideSection && d.Section != EnemyCycleInsideSection).ToList();
 			foreach (ConfigDefinition def in old) { orphans.Remove(def); }
 			if (old.Count > 0) { P.Log($"Config: removed {old.Count} old entries"); }
