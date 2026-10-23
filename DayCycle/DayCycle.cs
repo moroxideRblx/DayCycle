@@ -8,6 +8,8 @@ using UnityEngine;
 
 namespace DayCycle
 {
+	public enum ClockIcons { Original, DayCycle }
+
 	public static class DayCycle
 	{
 		public static Animator sunAnim;
@@ -49,6 +51,8 @@ namespace DayCycle
 			Hook("HUDManager.GetClockTimeFormatted", () => On.HUDManager.GetClockTimeFormatted += HUDManager_GetClockTimeFormatted);
 			Hook("HUDManager.SetClockIcon", () => On.HUDManager.SetClockIcon += HUDManager_SetClockIcon);
 			Hook("TimeOfDay.TimeOfDayEvents", () => On.TimeOfDay.TimeOfDayEvents += TimeOfDay_TimeOfDayEvents1); // PlayerSeesNewTimeOfDay() patch
+			Hook("TimeOfDay.Update", () => On.TimeOfDay.Update += TimeOfDay_Update);
+			ModConfig.clockIcons.SettingChanged += (_, _) => phasesChanged = true;
 
 			//sun animator swap
 			Hook("animatedSun.Start", () => On.animatedSun.Start += AnimatedSun_Start);
@@ -63,13 +67,40 @@ namespace DayCycle
 			catch (Exception e) { P.Fail($"hook {name} failed: {e.GetType().Name}: {e.Message}"); }
 		}
 
+		// vanilla only stings when dayMode goes up, which never happens on a looping day; count phase starts forward
+		// (wraps * starts + starts passed) so each change fires once and a time-sync rollback never replays one;
+		// starts, not phases, so it also works for the original phases (their day begins at 3 AM)
+		private static int phaseWraps;
+		private static float previousPhaseTime = -1f;
+		private static int lastSeenPhase = int.MinValue;
+		private static bool phasesChanged;
+
 		private static void TimeOfDay_TimeOfDayEvents1(On.TimeOfDay.orig_TimeOfDayEvents orig, TimeOfDay self)
 		{
-			orig(self);
-			if (MoonBlacklist.Active) { return; }
-			if (self.dayMode == DayMode.Dawn && self.dayModeLastTimePlayerWasOutside == DayMode.Midnight) {
-				self.PlayerSeesNewTimeOfDay();
+			if (MoonBlacklist.Active) { orig(self); return; }
+			float time = ((self.currentDayTime / self.totalTime) % 1f + 1f) % 1f;
+			if (previousPhaseTime >= 0f)
+			{
+				if (time < previousPhaseTime - 0.5f) { phaseWraps++; }
+				else if (time > previousPhaseTime + 0.5f) { phaseWraps--; }  // synced back across 6 AM
 			}
+			previousPhaseTime = time;
+			float[] starts = PhaseStarts;
+			int phase = phaseWraps * starts.Length;
+			foreach (float start in starts) { if (time >= start) { phase++; } }
+
+			DayMode seen = self.dayModeLastTimePlayerWasOutside;
+			if (seen == DayMode.None) { lastSeenPhase = int.MinValue; } // reset on landing
+			else if (phasesChanged) { lastSeenPhase = phase; seen = self.GetDayPhase(time); } // "Clock icons" switched: no cue, the icon follows below
+			phasesChanged = false;
+			bool newPhase = phase > lastSeenPhase;
+			// None lets vanilla's check fire, Midnight blocks it
+			self.dayModeLastTimePlayerWasOutside = newPhase ? DayMode.None : DayMode.Midnight;
+			orig(self);
+			if (newPhase && self.dayModeLastTimePlayerWasOutside != DayMode.None) { lastSeenPhase = phase; }
+			else { self.dayModeLastTimePlayerWasOutside = seen; }
+
+			RefreshClockIcon(self);
 		}
 
 		
@@ -140,12 +171,12 @@ namespace DayCycle
 		private static float TimeOfDay_CalculatePlanetTime(On.TimeOfDay.orig_CalculatePlanetTime orig, TimeOfDay self, SelectableLevel level)
 		{
 			if (MoonBlacklist.Active) { return orig(self, level); }
-			return (self.globalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % (self.totalTime + 1f);
+			return (self.globalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % self.totalTime; // exactly 24h (vanilla wraps at totalTime + 1)
 		}
 		private static float TimeOfDay_CalculatePlanetTimeClampToEndOfDay(On.TimeOfDay.orig_CalculatePlanetTimeClampToEndOfDay orig, TimeOfDay self, SelectableLevel level)
 		{
 			if (MoonBlacklist.Active) { return orig(self, level); }
-			return (self.globalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % (self.totalTime + 1f);
+			return (self.globalTime + level.OffsetFromGlobalTime) * level.DaySpeedMultiplier % self.totalTime; // exactly 24h (vanilla wraps at totalTime + 1)
 		}
 		private static void TimeOfDay_MoveTimeOfDay(ILContext il)
 		{
@@ -267,14 +298,75 @@ namespace DayCycle
 			{ DayMode.Midnight, 16.2f/24f }, // 11:12 PM - 2:59 AM
 			{ DayMode.Dawn, 21f/24f } // 3:00 AM - 5:59 AM ( time is offset +6 so it hits 24 here )
 		};
+		// "Clock icons" = DayCycle: hours since 6 AM / 24, before Noon is Dawn
+		public static Dictionary<DayMode, float> dayCyclePhaseTimes = new Dictionary<DayMode, float>(){
+			{ DayMode.Noon, 5f/24f }, // 11:00 AM
+			{ DayMode.Sundown, 14f/24f }, // 8:00 PM
+			{ DayMode.Midnight, 18f/24f }, // 12:00 AM
+		};
+		private static bool NewIcons => ModConfig.clockIcons.Value == ClockIcons.DayCycle;
+
+		// where each phase begins in the day (0 = 6 AM), for the sting
+		private static readonly float[] originalPhaseStarts = { phaseTimes[DayMode.Noon], phaseTimes[DayMode.Sundown], phaseTimes[DayMode.Midnight], phaseTimes[DayMode.Dawn] };
+		private static readonly float[] dayCyclePhaseStarts = { 0f, dayCyclePhaseTimes[DayMode.Noon], dayCyclePhaseTimes[DayMode.Sundown], dayCyclePhaseTimes[DayMode.Midnight] };
+		private static float[] PhaseStarts => NewIcons ? dayCyclePhaseStarts : originalPhaseStarts;
+
 		private static DayMode TimeOfDay_GetDayPhase(On.TimeOfDay.orig_GetDayPhase orig, TimeOfDay self, float time)
 		{
 			if (MoonBlacklist.Active) { return orig(self, time); }
+			if (NewIcons)
+			{
+				time = ((time % 1f) + 1f) % 1f;
+				if (time >= dayCyclePhaseTimes[DayMode.Midnight]) { return DayMode.Midnight; }
+				if (time >= dayCyclePhaseTimes[DayMode.Sundown]) { return DayMode.Sundown; }
+				if (time >= dayCyclePhaseTimes[DayMode.Noon]) { return DayMode.Noon; }
+				return DayMode.Dawn;
+			}
 			if (time >= phaseTimes[DayMode.Dawn]) { return DayMode.Dawn; } 
 			else if (time >= phaseTimes[DayMode.Midnight]) { return DayMode.Midnight; } 
 			else if (time >= phaseTimes[DayMode.Sundown]) { return DayMode.Sundown; } 
 			else if (time >= phaseTimes[DayMode.Noon]) { return DayMode.Noon; }	
 			else { return DayMode.Dawn; }
+		}
+
+		// HUDManager.clockIcons: 0 full sun, 1 half sun, 2 crescent moon, 3 skull
+		private const float AfternoonIconHour = 16f;
+
+		private static int ClockIconIndex(DayMode dayMode)
+		{
+			// original: each phase's own icon, the half sun from 3 AM
+			if (!NewIcons) { return dayMode == DayMode.Dawn && TimeOfDay.Instance.normalizedTimeOfDay >= phaseTimes[DayMode.Dawn] ? (int)DayMode.Noon : (int)dayMode; }
+			switch (dayMode)
+			{
+				case DayMode.Dawn: return 1;
+				case DayMode.Noon:
+					float clock = ((TimeOfDay.Instance.normalizedTimeOfDay % 1f + 1f) % 1f * 24f + 6f) % 24f;
+					return clock >= 11f && clock < AfternoonIconHour ? 0 : 1;
+				case DayMode.Sundown: return 2;
+				case DayMode.Midnight: return 3;
+				default: return (int)dayMode;
+			}
+		}
+
+		// icon changes inside a phase (original: 6 AM, DayCycle: 4 PM) aren't refreshed by vanilla; outside only, like vanilla
+		private static void RefreshClockIcon(TimeOfDay tod)
+		{
+			HUDManager hud = HUDManager.Instance;
+			var player = GameNetworkManager.Instance?.localPlayerController;
+			if (hud == null || player == null || tod.dayModeLastTimePlayerWasOutside != tod.dayMode) { return; }
+			if (player.isInsideFactory || player.isInHangarShipRoom || !StartOfRound.Instance.shipHasLanded) { return; }
+			if (hud.clockIcons == null || hud.clockIcons.Length < 4) { return; }
+			if (hud.clockIcon.sprite != hud.clockIcons[ClockIconIndex(tod.dayMode)]) { hud.SetClockIcon(tod.dayMode); }
+		}
+
+		// the landing frame sets the icon from dayMode, still the last round's
+		private static void TimeOfDay_Update(On.TimeOfDay.orig_Update orig, TimeOfDay self)
+		{
+			if (!MoonBlacklist.Active && self.currentDayTimeStarted && self.timeStartedThisFrame && self.currentLevel != null && self.currentLevel.planetHasTime)
+			{
+				self.dayMode = self.GetDayPhase(self.CalculatePlanetTime(self.currentLevel) / self.totalTime);
+			}
+			orig(self);
 		}
 		#endregion
 
@@ -489,44 +581,43 @@ namespace DayCycle
 		}
 		#endregion
 
+		// call the original with the time wrapped into the 24h loop so other clock mods still run (vanilla shows anything past its day as 12:00 AM)
 		private static void HUDManager_SetClock(On.HUDManager.orig_SetClock orig, HUDManager self, float timeNormalized, float numberOfHours, bool createNewLine)
 		{
 			if (MoonBlacklist.Active) { orig(self, timeNormalized, numberOfHours, createNewLine); return; }
-			int num = ((int)(timeNormalized * (60f * numberOfHours)) + 360) % (int)(60f * numberOfHours);
-			int num2 = (int)Mathf.Floor(num / 60);
-
-			self.newLine = (createNewLine ? "\n" : " ");
-			self.amPM = self.newLine + (num2 >= 12 ? "PM" : "AM");
-
-			//if (num2 >= 24) { self.clockNumber.text = "12:00 " + self.newLine + " AM"; return "12:00\nAM"; }
-			if (num2 > 12) { num2 -= 12; }
-			if (num2 == 0) { num2 = 12; }
-
-			int num3 = num % 60;
-			string text = $"{num2:00}:{num3:00}".TrimStart('0') + self.amPM;
-			self.clockNumber.text = text;
+			orig(self, WrapClockTime(timeNormalized, numberOfHours), numberOfHours, createNewLine);
+			self.clockNumber.text = FixMidnightHour(self.clockNumber.text);
 		}
-		// the leave-early vote's "Please return by X": same formatting as the clock above (vanilla shows anything past midnight as 12:00 AM)
+
+		// used by the leave-early vote message
 		private static string HUDManager_GetClockTimeFormatted(On.HUDManager.orig_GetClockTimeFormatted orig, HUDManager self, float timeNormalized, float numberOfHours, bool createNewLine)
 		{
 			if (MoonBlacklist.Active) { return orig(self, timeNormalized, numberOfHours, createNewLine); }
-			int num = ((int)(timeNormalized * (60f * numberOfHours)) + 360) % (int)(60f * numberOfHours);
-			int num2 = (int)Mathf.Floor(num / 60);
-
-			string amPM = (createNewLine ? "\n" : " ") + (num2 >= 12 ? "PM" : "AM");
-			if (num2 > 12) { num2 -= 12; }
-			if (num2 == 0) { num2 = 12; }
-
-			int num3 = num % 60;
-			return $"{num2:00}:{num3:00}".TrimStart('0') + amPM;
+			return FixMidnightHour(orig(self, WrapClockTime(timeNormalized, numberOfHours), numberOfHours, createNewLine));
 		}
+
+		// a t the game's (int)(t * minutesPerDay) + 360 turns into the same minute of the 24h loop
+		private static float WrapClockTime(float timeNormalized, float numberOfHours)
+		{
+			int day = (int)(60f * numberOfHours);
+			if (day <= 0) { return timeNormalized; }
+			int minute = ((Mathf.FloorToInt(timeNormalized * day) + 360) % day + day) % day;
+			int k = minute - 360;
+			// half-minute nudge so the (int) cast lands on k, negative k too
+			return (k + (k < 0 ? -0.5f : 0.5f)) / day;
+		}
+
+		// vanilla prints hour 0 as ":05 AM"; only that form is fixed, so a 24h mod's "00:05" is left alone
+		private static string FixMidnightHour(string text)
+		{
+			return text != null && text.StartsWith(":") ? "12" + text : text;
+		}
+
+		// calls the original so other mods' patches still run
 		private static void HUDManager_SetClockIcon(On.HUDManager.orig_SetClockIcon orig, HUDManager self, DayMode dayMode)
 		{
-			if (dayMode == DayMode.Dawn && !MoonBlacklist.Active && TimeOfDay.Instance.normalizedTimeOfDay >= phaseTimes[DayMode.Dawn])
-			{
-				dayMode = DayMode.Noon;
-			}
-			orig(self, dayMode);
+			if (MoonBlacklist.Active || TimeOfDay.Instance == null || self.clockIcons == null || self.clockIcons.Length < 4) { orig(self, dayMode); return; }
+			orig(self, (DayMode)ClockIconIndex(dayMode));
 		}
 
 		// 0-24 clock hour -> "2:00 AM"

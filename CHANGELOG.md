@@ -12,5 +12,6 @@
 - Settings moved into numbered sections, with optional LethalConfig support and a debug log option.
 - Moon blacklist: moons on it get the plain vanilla day.
 - Flood water follows a daily tide instead of rising forever.
+- The clock goes through the game's own code, wraps at exactly 24 hours and plays the sting once per phase change. There's an optional new icon schedule too.
 
 # 1.0.0

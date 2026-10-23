@@ -22,6 +22,7 @@ namespace DayCycle
 		public static ConfigEntry<float> floodPeakHour;
 		public static ConfigEntry<float> floodDrainedHour;
 		public static ConfigEntry<float> intervalSetting;
+		public static ConfigEntry<ClockIcons> clockIcons;
 
 		// in display order, for LethalConfig
 		private static readonly List<ConfigEntryBase> all = new List<ConfigEntryBase>();
@@ -50,6 +51,8 @@ namespace DayCycle
 			intervalSetting = Bind(cfg, ClockSection, "Clock update interval", 3f,
 				"Seconds between HUD clock updates.",
 				new AcceptableValueRange<float>(0.1f, 60f));
+			clockIcons = Bind(cfg, ClockSection, "Clock icons", ClockIcons.Original,
+				"HUD icon and day phase schedule: Original or DayCycle.");
 
 			MigrateOldEntries(cfg);
 			cfg.Save();
