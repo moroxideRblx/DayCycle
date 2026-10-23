@@ -35,6 +35,7 @@ namespace DayCycle
 			DayCycle.Patch();
 			EnemyCycle.Patch();
 			EnemyCycleRules.Patch();
+			Deadline.Patch();
 			Flood.Patch();
 			FallbackSun.Patch();
 			MoonBlacklist.Patch();

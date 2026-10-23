@@ -15,5 +15,6 @@
 - The clock goes through the game's own code, wraps at exactly 24 hours and plays the sting once per phase change. There's an optional new icon schedule too.
 - Optional outside and daytime enemy cycle, with a Cycled / Vanilla choice per enemy.
 - Optional indoor enemy cycle. Nutcrackers, Maneaters, the Ghost Girl and Cadaver Bloom always stay.
+- Deadline modes: OneDayExtended stays the default, Days and DayAndHour are optional.
 
 # 1.0.0

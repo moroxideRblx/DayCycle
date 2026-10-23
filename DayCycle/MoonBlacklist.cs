@@ -30,7 +30,6 @@ namespace DayCycle
 			DayCycle.Hook("StartOfRound.Start (vanilla day)", () => On.StartOfRound.Start += StartOfRound_Start);
 			DayCycle.Hook("StartOfRound.SceneManager_OnLoad", () => On.StartOfRound.SceneManager_OnLoad += StartOfRound_SceneManager_OnLoad);
 			DayCycle.Hook("StartOfRound.StartGame", () => On.StartOfRound.StartGame += StartOfRound_StartGame);
-			DayCycle.Hook("StartOfRound.PassTimeToNextDay (vanilla day)", () => On.StartOfRound.PassTimeToNextDay += StartOfRound_PassTimeToNextDay);
 			DayCycle.Hook("GameNetworkManager.SaveGameValues", () => On.GameNetworkManager.SaveGameValues += GameNetworkManager_SaveGameValues);
 			DayCycle.Hook("TimeOfDay.Update (vanilla day)", () => On.TimeOfDay.Update += TimeOfDay_Update);
 			ModConfig.moonBlacklist.SettingChanged += (_, _) => SyncNow();
@@ -143,43 +142,21 @@ namespace DayCycle
 			tod.numberOfHours = VanillaHours;
 			tod.totalTime = tod.lengthOfHours * VanillaHours;
 			Active = true;
-			EnterDeadline(tod);
+			Deadline.EnterVanillaDay(); // after Active, so the monitor is refreshed the vanilla way
 			P.Log($"Vanilla day: {level.PlanetName} is blacklisted, {VanillaHours}-hour day");
 		}
 
-		// every machine, after the end-of-day step (moon unloaded, clock stopped)
-		private static void StartOfRound_PassTimeToNextDay(On.StartOfRound.orig_PassTimeToNextDay orig, StartOfRound self, int connectedPlayersOnServer)
+		// every machine, start of the end-of-day step (moon unloaded, clock stopped)
+		internal static void Exit()
 		{
-			orig(self, connectedPlayersOnServer);
 			if (!Active) { return; }
 			TimeOfDay tod = TimeOfDay.Instance;
 			Active = false;
 			if (tod == null) { return; }
-			float deadline = RealDeadline(tod);
 			tod.numberOfHours = 24;
 			tod.totalTime = tod.lengthOfHours * 24f;
-			tod.timeUntilDeadline = deadline;
-			tod.UpdateProfitQuotaCurrentTime();
+			Deadline.ExitVanillaDay();
 			P.Log("Vanilla day: back to the 24-hour day");
-		}
-		#endregion
-
-		#region deadline
-		// the game spends its own 18h-day copy during the visit, the real value stays in 24h days
-		private static float heldDeadline, enteredCopy;
-
-		private static void EnterDeadline(TimeOfDay tod)
-		{
-			heldDeadline = tod.timeUntilDeadline;
-			tod.timeUntilDeadline = heldDeadline * Scale;
-			enteredCopy = tod.timeUntilDeadline;
-			tod.UpdateProfitQuotaCurrentTime();
-		}
-
-		// what the visit spent so far, in 24h days
-		private static float RealDeadline(TimeOfDay tod)
-		{
-			return heldDeadline - (enteredCopy - tod.timeUntilDeadline) / Scale;
 		}
 
 		// saves only happen in orbit, but if one hits a vanilla day write the 24h deadline
@@ -188,7 +165,7 @@ namespace DayCycle
 			TimeOfDay tod = TimeOfDay.Instance;
 			if (!Active || tod == null) { orig(self); return; }
 			float copy = tod.timeUntilDeadline;
-			tod.timeUntilDeadline = RealDeadline(tod);
+			tod.timeUntilDeadline = Deadline.Value;
 			try { orig(self); }
 			finally { tod.timeUntilDeadline = copy; }
 		}

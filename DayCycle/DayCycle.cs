@@ -27,8 +27,6 @@ namespace DayCycle
 			Hook("TimeOfDay.SetShipLeaveEarlyClientRpc", () => On.TimeOfDay.SetShipLeaveEarlyClientRpc += TimeOfDay_SetShipLeaveEarlyClientRpc);
 			Hook("TimeOfDay.SetShipLeaveEarlyServerRpc (IL)", () => IL.TimeOfDay.SetShipLeaveEarlyServerRpc += TimeOfDay_SetShipLeaveEarlyServerRpc);
 
-			Hook("StartOfRound.PassTimeToNextDay (IL)", () => IL.StartOfRound.PassTimeToNextDay += StartOfRound_PassTimeToNextDay);
-
 			// normalizedTimeOfDay Patches
 			Hook("EnemyAI.CheckTimeOfDayToLeave (IL)", () => IL.EnemyAI.CheckTimeOfDayToLeave += EnemyAI_CheckTimeOfDayToLeave);
 			Hook("RoundManager.SpawnRandomDaytimeEnemy (IL)", () => IL.RoundManager.SpawnRandomDaytimeEnemy += RoundManager_SpawnRandomDaytimeEnemy);
@@ -153,19 +151,8 @@ namespace DayCycle
 		private static void TimeOfDay_MoveGlobalTime(On.TimeOfDay.orig_MoveGlobalTime orig, TimeOfDay self)
 		{
 			if (MoonBlacklist.Active) { orig(self); return; }
-			float dt = Time.deltaTime * self.globalTimeSpeedMultiplier;
-			// never below 0: once the day's end is passed the difference turns negative and would refill the deadline every frame
-			self.timeUntilDeadline -= Mathf.Max(Mathf.Clamp(self.globalTime + dt, 0f, self.globalTimeAtEndOfDay*0.996f) - self.globalTime, 0f); // NOTE: only to keep intended behaviour
-			self.globalTime += dt; //self.globalTime = Mathf.Clamp(self.globalTime + dt, 0f, self.globalTimeAtEndOfDay);
-		}
-		private static void StartOfRound_PassTimeToNextDay(ILContext il)
-		{
-			ILCursor c = new ILCursor(il);
-			if (c.TryGotoNext(MoveType.Before, x => x.MatchStloc(0)))
-			{
-				c.EmitDelegate<Func<float, float>>((num) => { return MoonBlacklist.Active ? num : Mathf.Clamp(num, 0f, TimeOfDay.Instance.globalTimeAtEndOfDay); }); // might change later
-			}
-			else { P.Fail("pass fail"); }
+			// unclamped so time loops; Deadline spends the deadline
+			self.globalTime += Time.deltaTime * self.globalTimeSpeedMultiplier;
 		}
 
 		private static float TimeOfDay_CalculatePlanetTime(On.TimeOfDay.orig_CalculatePlanetTime orig, TimeOfDay self, SelectableLevel level)

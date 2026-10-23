@@ -26,6 +26,11 @@ namespace DayCycle
 		private const string CycleHoursGroup = EnemyCycleSection + " > Enemy cycle hours";
 		private const string OutsidePercentGroup = EnemyCycleSection + " > Outside enemy despawn percent";
 		private const string IndoorPercentGroup = EnemyCycleSection + " > Indoor enemy despawn percent";
+		private const string DeadlineDaysGroup = "3. Deadline > Deadline days";
+		public const string DeadlineSection = "3. Deadline";
+		public const string DaysModeSection = "3.1 Days Mode";
+		public const string DayAndHourModeSection = "3.2 DayAndHour Mode";
+		public const string DeadlineMoonsSection = "3.3 Deadline Moons";
 
 		public static ConfigEntry<string> moonBlacklist;
 		public static ConfigEntry<bool> debugLogging;
@@ -38,11 +43,34 @@ namespace DayCycle
 		public static ConfigEntry<int> indoorDawnShare;
 		private static readonly Dictionary<string, ConfigEntry<EnemyCycleRule>> enemyRules = new Dictionary<string, ConfigEntry<EnemyCycleRule>>();
 
+		public static ConfigEntry<DeadlineMode> deadlineMode;
+		public static ConfigEntry<DeadlineDaysSource> deadlineDaysSource;
+		public static ConfigEntry<int> deadlineDays;
+		public static ConfigEntry<float> countingHours;
+		public static ConfigEntry<float> giftHours;
+		public static ConfigEntry<float> alertLeadHours;
+		public static ConfigEntry<float> dayAndHourAlertLeadHours;
+		public static ConfigEntry<bool> landingPenaltyEnabled;
+		public static ConfigEntry<float> landingPenaltyHours;
+		public static ConfigEntry<bool> travelPenaltyEnabled;
+		public static ConfigEntry<float> companyVisitHours;
 		public static ConfigEntry<float> floodRiseHour;
 		public static ConfigEntry<float> floodPeakHour;
 		public static ConfigEntry<float> floodDrainedHour;
 		public static ConfigEntry<float> intervalSetting;
 		public static ConfigEntry<ClockIcons> clockIcons;
+
+		public static ConfigEntry<bool> notifyAdvanceWarning;
+		public static ConfigEntry<bool> notifyLowDeadline;
+		public static ConfigEntry<bool> notifyDayDeducted;
+		public static ConfigEntry<bool> notifyTravelCost;
+		public static ConfigEntry<bool> notifyLandingCost;
+		public static ConfigEntry<bool> notifyZeroWarning;
+		public static ConfigEntry<bool> notifyZeroWarningDayAndHour;
+
+		public static ConfigEntry<bool> teamWipePenaltyEnabled;
+		public static ConfigEntry<float> teamWipePenaltyHours;
+		private static readonly Dictionary<string, ConfigEntry<float>> moonTravelHours = new Dictionary<string, ConfigEntry<float>>();
 
 		// in display order, for LethalConfig
 		private static readonly List<ConfigEntryBase> all = new List<ConfigEntryBase>();
@@ -80,6 +108,57 @@ namespace DayCycle
 				"Hour enemies stop leaving; daytime enemies return after it.",
 				new AcceptableValueRange<float>(0f, 24f), group: CycleHoursGroup);
 
+			deadlineMode = Bind(cfg, DeadlineSection, "Deadline mode", DeadlineMode.OneDayExtended,
+				"OneDayExtended = 1 day per visit, Days = 1 day per 18 hours on a moon, DayAndHour = per hour.");
+			deadlineDaysSource = Bind(cfg, DeadlineSection, "Deadline days source", DeadlineDaysSource.GameOrOtherMods,
+				"Deadline length from the game (and quota mods) or \"Deadline days\".");
+			BindSetting(cfg, DeadlineSection, "Deadline days", 3, e => deadlineDays = e,
+				"Days per deadline.",
+				new AcceptableValueRange<int>(1, 30), group: DeadlineDaysGroup);
+			// a mode's settings only exist while it's chosen; its notification toggles are per player and follow the host's mode
+			BindSetting(cfg, DaysModeSection, "Counting hours", 18f, e => countingHours = e,
+				"Hours on a moon before a day is taken.",
+				new AcceptableValueRange<float>(1f, 48f));
+			BindSetting(cfg, DaysModeSection, "Gift hours", 6f, e => giftHours = e,
+				"Free hours after each day taken.",
+				new AcceptableValueRange<float>(0f, 48f));
+			BindSetting(cfg, DaysModeSection, "Alert lead time", 2f, e => alertLeadHours = e,
+				"Hours of warning before a day is taken.",
+				new AcceptableValueRange<float>(0f, 12f));
+			BindSetting(cfg, DaysModeSection, "Advance warning", true, e => notifyAdvanceWarning = e,
+				"Warning before a day is taken.");
+			BindSetting(cfg, DaysModeSection, "Low deadline alert", true, e => notifyLowDeadline = e,
+				"Alert when 1 day or less is left.");
+			BindSetting(cfg, DaysModeSection, "Day deducted notice", true, e => notifyDayDeducted = e,
+				"Notice when a day is taken.");
+			BindSetting(cfg, DaysModeSection, "Deadline zero warning", true, e => notifyZeroWarning = e,
+				"Warning before the deadline runs out.");
+			BindSetting(cfg, DayAndHourModeSection, "Landing penalty enabled", false, e => landingPenaltyEnabled = e,
+				"Each landing costs extra hours.");
+			BindSetting(cfg, DayAndHourModeSection, "Landing penalty hours", 1f, e => landingPenaltyHours = e,
+				"Hours taken per landing.",
+				new AcceptableValueRange<float>(0f, 24f));
+			BindSetting(cfg, DayAndHourModeSection, "Travel penalty enabled", false, e => travelPenaltyEnabled = e,
+				"Each moon costs travel hours (set in 3.3).",
+				isSwitch: true);
+			BindSetting(cfg, DayAndHourModeSection, "Company visit cost", 0f, e => companyVisitHours = e,
+				"Hours taken per Company visit.",
+				new AcceptableValueRange<float>(0f, 24f));
+			BindSetting(cfg, DayAndHourModeSection, "Team wipe penalty enabled", true, e => teamWipePenaltyEnabled = e,
+				"A team wipe costs extra hours.");
+			BindSetting(cfg, DayAndHourModeSection, "Team wipe penalty hours", 6f, e => teamWipePenaltyHours = e,
+				"Hours taken per team wipe.",
+				new AcceptableValueRange<float>(0f, 24f));
+			BindSetting(cfg, DayAndHourModeSection, "Alert lead time", 2f, e => dayAndHourAlertLeadHours = e,
+				"Hours of warning before the deadline runs out.",
+				new AcceptableValueRange<float>(0f, 12f));
+			BindSetting(cfg, DayAndHourModeSection, "Travel cost notice", true, e => notifyTravelCost = e,
+				"Notice when travel or Company hours are taken.");
+			BindSetting(cfg, DayAndHourModeSection, "Landing cost notice", true, e => notifyLandingCost = e,
+				"Notice when landing hours are taken.");
+			BindSetting(cfg, DayAndHourModeSection, "Deadline zero warning", true, e => notifyZeroWarningDayAndHour = e,
+				"Warning before the deadline runs out.");
+
 			floodRiseHour = Bind(cfg, FloodSection, "Rise start hour", 8f,
 				"Hour the water starts rising (8.5 = 8:30 AM).",
 				new AcceptableValueRange<float>(0f, 24f));
@@ -113,6 +192,25 @@ namespace DayCycle
 			ConfigEntry<T> entry = cfg.Bind(section, key, defaultValue, new ConfigDescription(description, range));
 			all.Add(entry);
 			return entry;
+		}
+
+		private const string MoonKeyPrefix = "Travel hours - ";
+
+		private static string MoonKey(string prefix, string planetName)
+		{
+			return prefix + new string(planetName.Where(c => "=\n\t\\\"'[]".IndexOf(c) < 0).ToArray()).Trim();
+		}
+
+		// null while the feature is off
+		public static ConfigEntry<float>? MoonTravelHours(string planetName, float defaultHours, int routePrice)
+		{
+			string key = MoonKey(MoonKeyPrefix, planetName);
+			if (moonTravelHours.TryGetValue(key, out ConfigEntry<float> entry)) { return entry; }
+			ConfigEntry<float>? created = BindItem(DeadlineMoonsSection, key, defaultHours, new ConfigDescription(
+				$"Travel hours to {planetName}.",
+				new AcceptableValueRange<float>(0f, 24f)));
+			if (created != null) { moonTravelHours[key] = created; }
+			return created;
 		}
 
 		#region per-item sections
@@ -187,14 +285,22 @@ namespace DayCycle
 
 		private static void SetUpItemSections()
 		{
+			string modeIs() => $"{deadlineMode.Definition.Key} is {deadlineMode.Value}";
 			itemSections.Add(new ItemSection { Name = EnemyCycleDaytimeSection, Applies = () => daytimeCycleEnabled.Value, OffReason = () => $"{daytimeCycleEnabled.Definition.Key} off", Rebuild = EnemyCycleRules.RegisterAll, ClearCache = () => ClearEnemyRules(EnemyCycleDaytimeSection) });
 			itemSections.Add(new ItemSection { Name = EnemyCycleOutsideSection, Applies = () => dawnFadeEnabled.Value, OffReason = () => $"{dawnFadeEnabled.Definition.Key} off", Rebuild = EnemyCycleRules.RegisterAll, ClearCache = () => ClearEnemyRules(EnemyCycleOutsideSection) });
 			itemSections.Add(new ItemSection { Name = EnemyCycleInsideSection, Applies = () => indoorDawnFade.Value, OffReason = () => $"{indoorDawnFade.Definition.Key} off", Rebuild = EnemyCycleRules.RegisterAll, ClearCache = () => ClearEnemyRules(EnemyCycleInsideSection) });
 			itemSections.Add(new ItemSection { Name = OutsidePercentGroup, InSection = EnemyCycleSection, Applies = () => dawnFadeEnabled.Value, OffReason = () => $"{dawnFadeEnabled.Definition.Key} off", Settings = sectionSettings[OutsidePercentGroup] });
 			itemSections.Add(new ItemSection { Name = CycleHoursGroup, InSection = EnemyCycleSection, Applies = () => dawnFadeEnabled.Value || daytimeCycleEnabled.Value || indoorDawnFade.Value, OffReason = () => "all enemy cycles off", Settings = sectionSettings[CycleHoursGroup] });
 			itemSections.Add(new ItemSection { Name = IndoorPercentGroup, InSection = EnemyCycleSection, Applies = () => indoorDawnFade.Value, OffReason = () => $"{indoorDawnFade.Definition.Key} off", Settings = sectionSettings[IndoorPercentGroup] });
+			itemSections.Add(new ItemSection { Name = DeadlineDaysGroup, InSection = DeadlineSection, Applies = () => deadlineDaysSource.Value == DeadlineDaysSource.DayCycle, OffReason = () => $"{deadlineDaysSource.Definition.Key} is {deadlineDaysSource.Value}", Settings = sectionSettings[DeadlineDaysGroup] });
+			itemSections.Add(new ItemSection { Name = DaysModeSection, Applies = () => deadlineMode.Value == DeadlineMode.Days, OffReason = modeIs, Settings = sectionSettings[DaysModeSection] });
+			itemSections.Add(new ItemSection { Name = DayAndHourModeSection, Applies = () => deadlineMode.Value == DeadlineMode.DayAndHour, OffReason = modeIs, Settings = sectionSettings[DayAndHourModeSection] });
+			itemSections.Add(new ItemSection { Name = DeadlineMoonsSection, Applies = () => deadlineMode.Value == DeadlineMode.DayAndHour && travelPenaltyEnabled.Value,
+				OffReason = () => deadlineMode.Value != DeadlineMode.DayAndHour ? modeIs() : $"{travelPenaltyEnabled.Definition.Key} off", Rebuild = Deadline.RebuildMoonList, ClearCache = moonTravelHours.Clear });
 			foreach (ItemSection s in itemSections) { s.Shown = s.On; }
 			foreach (ConfigEntry<bool> toggle in new[] { daytimeCycleEnabled, dawnFadeEnabled, indoorDawnFade }) { toggle.SettingChanged += (_, _) => RefreshSections(); }
+			deadlineMode.SettingChanged += (_, _) => RefreshSections();
+			deadlineDaysSource.SettingChanged += (_, _) => RefreshSections();
 		}
 
 		private static bool SectionOn(string section)
@@ -226,7 +332,7 @@ namespace DayCycle
 			return entry;
 		}
 
-		// in order, so a section shown again is in place before the ones that depend on it
+		// in order, so a section shown again (3.2) is in place before the ones that depend on it (3.3)
 		private static void RefreshSections()
 		{
 			foreach (ItemSection s in itemSections)
@@ -416,7 +522,8 @@ namespace DayCycle
 			// per-item entries are unbound (orphans) at startup
 			StashDisabledSections(orphans);
 
-			List<ConfigDefinition> old = orphans.Keys.Where(d => d.Section != EnemyCycleDaytimeSection && d.Section != EnemyCycleOutsideSection && d.Section != EnemyCycleInsideSection).ToList();
+			List<ConfigDefinition> old = orphans.Keys.Where(d => !(d.Section == DeadlineMoonsSection && d.Key.StartsWith(MoonKeyPrefix))
+				&& d.Section != EnemyCycleDaytimeSection && d.Section != EnemyCycleOutsideSection && d.Section != EnemyCycleInsideSection).ToList();
 			foreach (ConfigDefinition def in old) { orphans.Remove(def); }
 			if (old.Count > 0) { P.Log($"Config: removed {old.Count} old entries"); }
 		}
