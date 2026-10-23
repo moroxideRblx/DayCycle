@@ -18,6 +18,16 @@ Updated for Lethal Company v81.
 - Moon blacklist: moons on it get the plain vanilla 18-hour day.
 - Plus a bunch of v81 fixes for spawns, the clock and the time-of-day stingers.
 
+Everything below is off by default, turn on what you like in the config.
+
+- Outside enemy cycle: night enemies leave between 4 and 7 AM and come back at night. Old Birds power down instead. Nothing leaves while you're looking at it or while it's chasing someone.
+- Daytime enemy cycle: manticoils and locusts still leave at nightfall, but now they come back every morning.
+- You can set every enemy, vanilla or modded, to follow the cycle or act like vanilla.
+
+## Config
+
+Everything is in `BepInEx/config/DayCycle.cfg`. Change it in your mod manager, or in game with LethalConfig. Settings only show up while the feature they belong to is on.
+
 ## Credits
 
 - nooshstuff made DayCycle: the 24-hour day, the sun animations and the whole idea. [github.com/nooshstuff/DayCycle](https://github.com/nooshstuff/DayCycle)
