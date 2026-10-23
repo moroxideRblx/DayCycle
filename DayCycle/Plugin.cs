@@ -22,31 +22,18 @@ namespace DayCycle
 			config = ModConfig.Load();
 			assets = AssetBundle.LoadFromFile(Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "daycycle"));
 
-			API.sunAnimators["SunAnimContainer"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/SunAnimContainer_24.controller");
-			API.sunAnimators["SunAnimContainer 1"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/SunAnimContainer 1_24.controller");
-			API.sunAnimators["BlizzardSunAnimContainer"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/BlizzardSunAnimContainer_24.controller");
+			// without the bundle the rest still works; the suns keep their 18-hour animations
+			if (assets == null) { Fail("asset bundle \"daycycle\" not found next to DayCycle.dll, suns are not replaced"); }
+			else
+			{
+				API.sunAnimators["SunAnimContainer"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/SunAnimContainer_24.controller");
+				API.sunAnimators["SunAnimContainer 1"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/SunAnimContainer 1_24.controller");
+				API.sunAnimators["BlizzardSunAnimContainer"] = assets.LoadAsset<RuntimeAnimatorController>("Assets/DayCycle/BlizzardSunAnimContainer_24.controller");
+			}
 
-			NetcodePatcher();
 			DayCycle.Patch();
 
 			Logger.LogInfo($"{MyPluginInfo.PLUGIN_GUID} [{MyPluginInfo.PLUGIN_VERSION}] loaded");
-		}
-
-		private void NetcodePatcher()
-		{
-			var types = Assembly.GetExecutingAssembly().GetTypes();
-			foreach (var type in types)
-			{
-				var methods = type.GetMethods(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-				foreach (var method in methods)
-				{
-					var attributes = method.GetCustomAttributes(typeof(RuntimeInitializeOnLoadMethodAttribute), false);
-					if (attributes.Length > 0)
-					{
-						method.Invoke(null, null);
-					}
-				}
-			}
 		}
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
@@ -62,9 +49,9 @@ namespace DayCycle
 		}
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		public static void Fail(object data, LLV lvl = LLV.Error)
+		public static void Fail(object data, LLV lvl = LLV.Error, [CallerMemberName] string name = "", [CallerLineNumber] int ln = 0)
 		{
-			Instance.Logger.Log(lvl, P.Loc() + " " + data);
+			Instance.Logger.Log(lvl, P.Loc(name, ln) + " " + data);
 		}
 	}
 

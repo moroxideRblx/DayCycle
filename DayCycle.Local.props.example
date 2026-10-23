@@ -1,0 +1,13 @@
+<Project>
+	<!-- Copy this file to DayCycle.Local.props (git-ignored) and set your local paths. -->
+	<!-- Game assemblies come from the LethalCompany.GameLibs.Steam NuGet package: no game path is needed. -->
+	<PropertyGroup>
+		<!-- Mod manager profile root (the folder containing BepInEx/), with BepInExPack and HookGenPatcher installed
+		     and the game started once. MMHOOK is read from it and the build is copied into BepInEx/plugins/Noosh-DayCycle. -->
+		<PROFILE_DIR>$(APPDATA)/r2modmanPlus-local/LethalCompany/profiles/Default</PROFILE_DIR>
+		<!-- Optional: a different folder holding MMHOOK_Assembly-CSharp.dll (default: PROFILE_DIR/BepInEx/plugins/MMHOOK/) -->
+		<!-- <MMHOOKDirectory>C:/path/to/MMHOOK/</MMHOOKDirectory> -->
+		<!-- Optional: a sun bundle built elsewhere (default: UnityProject/AssetBundles/daycycle) -->
+		<!-- <BundlePath>C:/path/to/daycycle</BundlePath> -->
+	</PropertyGroup>
+</Project>

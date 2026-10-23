@@ -2,9 +2,9 @@
   "name": "DayCycle",
   "description": "A mouh",
   "version_number": "1.0.1",
-  "website_url": "https://github.com/nooshstuff/",
+  "website_url": "https://github.com/nooshstuff/DayCycle",
   "dependencies": [
-    "BepInEx-BepInExPack-5.4.2100",
+    "BepInEx-BepInExPack-5.4.2305",
     "Evaisa-HookGenPatcher-0.0.5"
   ]
 }
