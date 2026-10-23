@@ -44,9 +44,6 @@ namespace DayCycle
 			Hook("RoundManager.SpawnInsideEnemiesFromVentsIfReady (IL)", () => IL.RoundManager.SpawnInsideEnemiesFromVentsIfReady += RoundManager_SpawnInsideEnemiesFromVentsIfReady);
 			Hook("EnemyVent.Update (IL)", () => IL.EnemyVent.Update += EnemyVent_Update);
 
-			// water
-			Hook("FloodWeather.OnGlobalTimeSync", () => On.FloodWeather.OnGlobalTimeSync += FloodWeather_OnGlobalTimeSync);
-
 			// clock
 			Hook("HUDManager.SetClock", () => On.HUDManager.SetClock += HUDManager_SetClock);
 			Hook("HUDManager.GetClockTimeFormatted", () => On.HUDManager.GetClockTimeFormatted += HUDManager_GetClockTimeFormatted);
@@ -491,14 +488,6 @@ namespace DayCycle
 			return ins != null && ins.MatchLdfld<TimeOfDay>(nameof(TimeOfDay.totalTime));
 		}
 		#endregion
-
-		private static void FloodWeather_OnGlobalTimeSync(On.FloodWeather.orig_OnGlobalTimeSync orig, FloodWeather self)
-		{
-			if (MoonBlacklist.Active) { orig(self); return; }
-			self.floodLevelOffset = Mathf.Clamp(TimeOfDay.Instance.globalTime / TimeOfDay.Instance.totalTime, 0f, 100f) * TimeOfDay.Instance.currentWeatherVariable2;
-			// right now this code makes the flood level keep rising. its nutso
-			// add a way for the level to go down eventually?
-		}
 
 		private static void HUDManager_SetClock(On.HUDManager.orig_SetClock orig, HUDManager self, float timeNormalized, float numberOfHours, bool createNewLine)
 		{

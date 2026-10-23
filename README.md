@@ -12,6 +12,7 @@ Updated for Lethal Company v81.
 - Every vanilla moon gets a proper 24-hour sun with sunsets, dark nights and sunrises, in normal, stormy and eclipse versions.
 - Modded moons keep their own sun and fade into the morning between 3 and 6 AM.
 - Spawns follow the day: busier towards midnight, calmer towards dawn, every day you stay.
+- Flooded moons get a daily tide: the water rises from 8 AM, peaks at midnight and is back down by 6 AM.
 - Each moon visit costs one deadline day however long you stay.
 - Moon blacklist: moons on it get the plain vanilla 18-hour day.
 

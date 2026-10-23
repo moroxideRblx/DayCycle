@@ -13,10 +13,14 @@ namespace DayCycle
 		public const string LethalConfigGuid = "ainavt.lc.lethalconfig";
 
 		public const string DayCycleSection = "1. Day Cycle";
+		public const string FloodSection = "4. Flood";
 		public const string ClockSection = "5. Clock";
 
 		public static ConfigEntry<string> moonBlacklist;
 		public static ConfigEntry<bool> debugLogging;
+		public static ConfigEntry<float> floodRiseHour;
+		public static ConfigEntry<float> floodPeakHour;
+		public static ConfigEntry<float> floodDrainedHour;
 		public static ConfigEntry<float> intervalSetting;
 
 		// in display order, for LethalConfig
@@ -32,6 +36,16 @@ namespace DayCycle
 				"Moons that use the vanilla day. Comma-separated, e.g. Gordion, Embrion.");
 			debugLogging = Bind(cfg, DayCycleSection, "Debug logging", false,
 				"Extra log lines for bug reports.");
+
+			floodRiseHour = Bind(cfg, FloodSection, "Rise start hour", 8f,
+				"Hour the water starts rising (8.5 = 8:30 AM).",
+				new AcceptableValueRange<float>(0f, 24f));
+			floodPeakHour = Bind(cfg, FloodSection, "Peak hour", 0f,
+				"Hour the water is highest (0 = midnight).",
+				new AcceptableValueRange<float>(0f, 24f));
+			floodDrainedHour = Bind(cfg, FloodSection, "Drained hour", 6f,
+				"Hour the water is back down.",
+				new AcceptableValueRange<float>(0f, 24f));
 
 			intervalSetting = Bind(cfg, ClockSection, "Clock update interval", 3f,
 				"Seconds between HUD clock updates.",

@@ -11,5 +11,6 @@
 - Modded moons keep their own sun and fade into the morning from 3 to 6 AM.
 - Settings moved into numbered sections, with optional LethalConfig support and a debug log option.
 - Moon blacklist: moons on it get the plain vanilla day.
+- Flood water follows a daily tide instead of rising forever.
 
 # 1.0.0

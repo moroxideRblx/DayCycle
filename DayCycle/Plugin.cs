@@ -33,6 +33,7 @@ namespace DayCycle
 			}
 
 			DayCycle.Patch();
+			Flood.Patch();
 			FallbackSun.Patch();
 			MoonBlacklist.Patch();
 
