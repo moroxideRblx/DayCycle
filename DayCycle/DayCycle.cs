@@ -215,7 +215,11 @@ namespace DayCycle
 				c.EmitDelegate<Func<TimeOfDay, bool>>(
 					(self) => {
 						if (self.globalTime >= float.MaxValue - 4.32) { return true; }
-						if (LeaveEarlyVoted(self) && PlanetTimeUnwrapped(self) >= leaveEarlyAt) { return true; }
+						if (LeaveEarlyVoted(self) && PlanetTimeUnwrapped(self) >= leaveEarlyAt)
+						{
+							P.LogDebug("Ship leave: leave-early vote time reached");
+							return true;
+						}
 						return false;
 					}
 				);
@@ -250,6 +254,7 @@ namespace DayCycle
 			if (self.shipLeaveAutomaticallyTime != timeToLeaveEarly || LeaveEarlyVoted(self)) { return; }
 			leaveEarlyFor = timeToLeaveEarly;
 			leaveEarlyAt = PlanetTimeUnwrapped(self) + (timeToLeaveEarly - self.normalizedTimeOfDay) * self.totalTime; // the time in "Please return by X"
+			P.LogDebug($"Ship leave: vote passed with {votes} votes, leaving at {FormatHour((leaveEarlyAt / self.lengthOfHours + 6f) % 24f)}");
 		}
 		public static Dictionary<DayMode, float> phaseTimes = new Dictionary<DayMode, float>(){
 			//{ "dawn", 0f/24f }, // 6:00 AM -  11:59 AM
@@ -340,7 +345,7 @@ namespace DayCycle
 				c.Emit(OpCodes.Ldloc_0);    // num (basically timeUpToCurrentHour)
 				c.EmitDelegate<Func<float, RoundManager, float, float>>((vanilla, rm, num) => {
 					float val = (num % rm.timeScript.totalTime) / rm.timeScript.totalTime;
-					return (val < 0.75f ? val * (4.0f / 3.0f) : 1 - (val - 0.75f) * 4);
+					return LogCurve(rm, "daytime", rm.currentLevel.daytimeEnemySpawnChanceThroughDay, val < 0.75f ? val * (4.0f / 3.0f) : 1 - (val - 0.75f) * 4);
 				});
 			}
 			else { P.Fail("day broken"); }
@@ -358,7 +363,8 @@ namespace DayCycle
 			{
 				c.Emit(OpCodes.Ldarg_0);    // self
 				c.Emit(OpCodes.Ldloc_0);    // num
-				c.EmitDelegate<Func<float, RoundManager, float, float>>((vanilla, rm, num) => DayCurve(num / rm.timeScript.totalTime)); // num keeps growing past one day
+				c.EmitDelegate<Func<float, RoundManager, float, float>>((vanilla, rm, num) => // num keeps growing past one day
+					LogCurve(rm, "outside", rm.currentLevel.outsideEnemySpawnChanceThroughDay, DayCurve(num / rm.timeScript.totalTime)));
 			}
 			else { P.Fail("can't go outside"); }
 		}
@@ -366,6 +372,19 @@ namespace DayCycle
 		{
 			// enemyType.probabilityCurve (with and without numberSpawnedFalloff); its argument grows past one day
 			if (RemapDayCurves(il) < 2) { P.Fail("outside probability curve not remapped"); }
+		}
+
+		// hourly, host: the spawn curve's input and value, with the group's power and diversity budget
+		private static float LogCurve(RoundManager rm, string group, AnimationCurve curve, float time)
+		{
+			if (!P.DebugOn || curve == null) { return time; }
+			TimeOfDay tod = rm.timeScript;
+			string clock = FormatHour((tod.normalizedTimeOfDay * tod.numberOfHours + 6f) % 24f);
+			string budget = group == "outside" ? $"power {rm.currentOutsideEnemyPower:0.#} (no deaths {rm.currentOutsideEnemyPowerNoDeaths:0.#}) / {rm.currentMaxOutsidePower:0.#}, diversity {rm.currentOutsideEnemyDiversityLevel} / {rm.currentMaxOutsideDiversityLevel}"
+				: group == "inside" ? $"power {rm.currentEnemyPower:0.#} (no deaths {rm.currentEnemyPowerNoDeaths:0.#}) / {rm.currentMaxInsidePower:0.#}, diversity {rm.currentInsideEnemyDiversityLevel} / {rm.currentMaxInsideDiversityLevel}"
+				: $"power {rm.currentDaytimeEnemyPower:0.#} (no deaths {rm.currentDaytimeEnemyPowerNoDeaths:0.#}) / {rm.currentLevel.maxDaytimeEnemyPowerCount}";
+			P.LogDebug($"Spawn curve ({group}) at {clock}: time {time:0.###}, value {curve.Evaluate(time):0.###}; {budget}");
+			return time;
 		}
 
 		// currentDayTime without the wrap at 6 AM, so the hour counter and vent spawn times survive the wrap
@@ -407,7 +426,7 @@ namespace DayCycle
 				c.Emit(OpCodes.Ldarg_0);
 				c.EmitDelegate<Func<float, RoundManager, float>>((vanilla, rm) => {
 					float val = rm.timeScript.currentDayTime / rm.timeScript.totalTime;
-					return (val < 0.75f ? val * (4.0f / 3.0f) : 1 - (val - 0.75f) * 4);
+					return LogCurve(rm, "inside", rm.currentLevel.enemySpawnChanceThroughoutDay, val < 0.75f ? val * (4.0f / 3.0f) : 1 - (val - 0.75f) * 4);
 				});
 			}
 			else { P.Fail("plot my balls"); }
@@ -505,6 +524,17 @@ namespace DayCycle
 				dayMode = DayMode.Noon;
 			}
 			orig(self, dayMode);
+		}
+
+		// 0-24 clock hour -> "2:00 AM"
+		internal static string FormatHour(float hour)
+		{
+			int minutes = (Mathf.RoundToInt(hour * 60f) % 1440 + 1440) % 1440; // round, not truncate (13.8333 h = 1:50 PM)
+			int h = minutes / 60;
+			string ampm = h >= 12 ? "PM" : "AM";
+			h %= 12;
+			if (h == 0) { h = 12; }
+			return $"{h}:{minutes % 60:00} {ampm}";
 		}
 
 		internal static void UnPatch()

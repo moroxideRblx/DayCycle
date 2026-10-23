@@ -10,6 +10,7 @@ using UnityEngine;
 namespace DayCycle
 {
     [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
+	[BepInDependency(ModConfig.LethalConfigGuid, BepInDependency.DependencyFlags.SoftDependency)]
 	public class P : BaseUnityPlugin
 	{
 		internal static P Instance;
@@ -49,20 +50,19 @@ namespace DayCycle
 			Instance.Logger.Log(lvl, data);
 		}
 
+		// only with "Debug logging" on
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public static void LogDebug(string data)
+		{
+			if (DebugOn) { Instance.Logger.Log(LLV.Info, "[Debug] " + data); }
+		}
+
+		internal static bool DebugOn => ModConfig.debugLogging != null && ModConfig.debugLogging.Value;
+
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		public static void Fail(object data, LLV lvl = LLV.Error, [CallerMemberName] string name = "", [CallerLineNumber] int ln = 0)
 		{
 			Instance.Logger.Log(lvl, P.Loc(name, ln) + " " + data);
-		}
-	}
-
-	public static class ModConfig
-	{
-		public static ConfigEntry<float> intervalSetting;
-		public static ConfigFile Load()
-		{
-			intervalSetting = P.Instance.Config.Bind("Other", "Clock Update Interval", 3f, "Interval at which the time on the HUD clock updates");
-			return P.Instance.Config;
 		}
 	}
 }
